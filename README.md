@@ -3,11 +3,22 @@
 Persönliche ToDo-Liste — einfach, intuitiv, mit etwas Finesse.
 **Lokal & offline.** Läuft als PWA (kein Build, kein Cloud-Server), installierbar am Mac und am Handy.
 
-## Starten
+## Live (Handy & überall)
 
-Doppelklick auf **`Start-ToDo-Maki.command`** → öffnet die App im Browser unter `http://127.0.0.1:8910`.
+**https://marckill78.github.io/todo-maki/** (GitHub Pages, HTTPS).
+- **Als App aufs iPhone:** Link in **Safari** öffnen → **Teilen** → **„Zum Home-Bildschirm"** → eigenes Icon, Vollbild, offline.
+- Updates: Code pushen → App neu laden (Service Worker aktualisiert sich, ggf. zweimal laden).
+- **Daten sind pro Gerät/Adresse** (IndexedDB). Übertragen via ⚙ Einstellungen → Backup exportieren/importieren.
 
-> Als App installieren: im Browser über „Installieren“ / „Zum Home-Bildschirm“ → läuft dann im eigenen Fenster, offline.
+## Lokal entwickeln
+
+Doppelklick auf **`Start-ToDo-Maki.command`** → öffnet die App unter `http://127.0.0.1:8910`.
+
+> Hinweis: localhost und die Live-Adresse sind getrennte Speicher. Daten via Backup-Export/Import umziehen.
+
+## Deployment
+
+Statische Dateien auf GitHub Pages (`marckill78/todo-maki`, Branch `main`, Root). Nach Änderungen: committen + `git push` → Pages baut automatisch. Cache-Version in `index.html` (`?v=N`) und `sw.js` (`maki-vN`) hochzählen.
 
 ## Features (Stand: MVP, Iteration 1)
 
