@@ -1,0 +1,17 @@
+{
+  "name": "ToDo Maki",
+  "short_name": "Maki",
+  "description": "Persönliche ToDo-Liste — Bereiche, Mein Tag, Kalender. Offline & lokal.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f5f6fa",
+  "theme_color": "#6c5ce7",
+  "lang": "de",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
