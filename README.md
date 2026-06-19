@@ -39,6 +39,12 @@ Statische Dateien auf GitHub Pages (`marckill78/todo-maki`, Branch `main`, Root)
 - **📍 Orte** — Reiseziele, Restaurants & Aktivitäten in einer Sektion mit Typ- und Status-Filter. Felder: Name, Typ, Bewertung (Sterne), Preisniveau, Status (will ich / war ich), Website, Telefon (direkt wählbar), Adresse + Google-Maps-Button, Tags, Bild, Notizen.
 - **💶 Budget** — Ausgaben mit wählbaren Kategorien (eigener Editor: Emoji, Farbe, **Monatslimit** mit Warnung) und optionalen **Unterkategorien**, Monatsansicht, Donut-Diagramm + Kategorie-Balken, Ausgabenliste.
 - **📱 iPhone-tauglich** — kompaktes, responsives Layout (PWA installierbar, Sidebar einklappbar, Karten/Budget für schmale Screens optimiert).
+- **⚙️ Einstellungen** — Theme (Hell/Dunkel/System), frei wählbare **Akzentfarbe**, **Wochenstart** (Mo/So), **Start-Ansicht**, **Erledigte ausblenden**, **Erinnerungs-Uhrzeit**, **Alle Daten zurücksetzen**, Backup-Export/-Import.
+
+## Online
+
+Live als installierbare PWA: **https://marckill78.github.io/todo-maki/**
+Am iPhone: in Safari öffnen → Teilen → „Zum Home-Bildschirm". Daten liegen pro Gerät lokal (IndexedDB); Übertragung via Backup-Export/-Import.
 - **Backup** (⚙️ Einstellungen) — kompletter Export als JSON-Datei (inkl. Anhänge, Bilder, Ziele, Orte, Budget) und Wiederherstellung daraus. Wichtig, da die Daten nur lokal im Browser-Profil liegen.
 
 ## Technik
