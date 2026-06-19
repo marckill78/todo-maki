@@ -51,21 +51,22 @@ const Sync = (() => {
         if (u) { await onLogin(u.uid); }
         else { onLogout(); }
       });
-      // Falls Redirect-Login verwendet wurde
-      auth.getRedirectResult().catch(() => {});
+      // Ergebnis eines Redirect-Logins auswerten (und Fehler sichtbar machen)
+      auth.getRedirectResult().catch((e) => {
+        if (e && e.code) alert("Login-Problem: " + e.message + "\n(Code: " + e.code + ")");
+      });
     } catch (e) { console.error("Sync init", e); setStatus("error"); }
   }
 
   async function login() {
-    if (!isReady()) return;
+    if (!isReady()) { alert("Sync ist noch nicht bereit – Seite neu laden und nochmal versuchen."); return; }
     const provider = new firebase.auth.GoogleAuthProvider();
+    // Weiterleitung statt Popup: funktioniert auch in der installierten PWA / bei Popup-Blockern
     try {
-      await auth.signInWithPopup(provider);
+      await auth.signInWithRedirect(provider);
     } catch (e) {
-      // Popup blockiert (häufig in installierter PWA) → Redirect
-      if (e && (e.code === "auth/popup-blocked" || e.code === "auth/cancelled-popup-request" || e.code === "auth/operation-not-supported-in-this-environment")) {
-        await auth.signInWithRedirect(provider);
-      } else { console.error("Login", e); }
+      console.error("Login", e);
+      alert("Anmeldung fehlgeschlagen: " + (e && e.message ? e.message : e) + (e && e.code ? "\n(Code: " + e.code + ")" : ""));
     }
   }
   async function logout() {
