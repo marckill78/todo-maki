@@ -80,6 +80,14 @@ const Store = (() => {
     state.loaded = true;
   }
 
+  // State aus der DB neu laden (nach Cloud-Sync), ohne Seed/Migration/Cleanup
+  async function reload() {
+    state.areas = (await DB.getAll("areas")).sort((a, b) => (a.order || 0) - (b.order || 0));
+    state.tasks = (await DB.getAll("tasks")).filter(t => !t.archived);
+    state.goals = (await DB.getAll("goals")).sort((a, b) => (a.order || 0) - (b.order || 0));
+    state.places = (await DB.getAll("places")).sort((a, b) => (a.order || 0) - (b.order || 0));
+  }
+
   /* Einmalige Datenmigrationen (greifen in bestehende Installationen) */
   async function runMigrations() {
     // 1) Bereich-Symbole anpassen (nur falls noch der alte Default gesetzt ist)
@@ -465,7 +473,7 @@ const Store = (() => {
   }
 
   return {
-    state, init,
+    state, init, reload,
     uid, todayStr, toDateStr, addToDate,
     exportData, importData,
     progress, isOverdue, isDueToday, inMyDay,

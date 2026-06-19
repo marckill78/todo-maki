@@ -327,6 +327,13 @@ input, select, textarea { font-family: inherit; font-size: 15px; color: var(--in
 .modal-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
 .modal-actions > div { display: flex; gap: 8px; }
 
+/* ============ KONTO / SYNC ============ */
+.account-row { display: flex; align-items: center; gap: 11px; }
+.account-pic { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.account-pic.ph { display: grid; place-items: center; background: var(--surface-2); font-size: 18px; }
+.account-info { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.account-info span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ============ EINSTELLUNGEN ============ */
 .settings-block { display: flex; flex-direction: column; gap: 9px; }
 .settings-block h4 { font-size: 15px; font-weight: 700; }

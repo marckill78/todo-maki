@@ -18,6 +18,8 @@ const DB = (() => {
   const DB_NAME = "todo-maki";
   const DB_VERSION = 2;
   let _db = null;
+  // Diese Stores werden (bei aktivem Login) mit der Cloud synchronisiert
+  const SYNC_STORES = new Set(["areas", "tasks", "goals", "places", "expenses"]);
 
   function open() {
     return new Promise((resolve, reject) => {
@@ -85,14 +87,20 @@ const DB = (() => {
       const s = await tx(store);
       return reqToPromise(s.index(index).getAll(value));
     },
-    async put(store, obj) {
+    async put(store, obj, opts = {}) {
+      // Für synchronisierte Stores Änderungszeit stempeln (Last-Write-Wins)
+      if (SYNC_STORES.has(store) && !opts.fromRemote) obj.updatedAt = Date.now();
       const s = await tx(store, "readwrite");
       await reqToPromise(s.put(obj));
+      if (!opts.fromRemote && SYNC_STORES.has(store) && window.Sync && window.Sync.isOn())
+        window.Sync.pushDoc(store, obj);
       return obj;
     },
-    async del(store, id) {
+    async del(store, id, opts = {}) {
       const s = await tx(store, "readwrite");
-      return reqToPromise(s.delete(id));
+      await reqToPromise(s.delete(id));
+      if (!opts.fromRemote && SYNC_STORES.has(store) && window.Sync && window.Sync.isOn())
+        window.Sync.pushDelete(store, id);
     },
     async clear(store) {
       const s = await tx(store, "readwrite");

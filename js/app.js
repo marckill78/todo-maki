@@ -1212,11 +1212,36 @@
   }
 
   /* ============ EINSTELLUNGEN / BACKUP ============ */
+  function accountBlock() {
+    if (!window.Sync || !Sync.isReady()) {
+      return `<div class="settings-block" data-account><h4>Konto & Sync</h4>
+        <p class="muted small">Sync wird geladen… (benötigt Internet beim ersten Start)</p></div>`;
+    }
+    const u = Sync.user;
+    const statusTxt = { syncing: "Synchronisiere…", on: "Synchronisiert ✓", error: "Sync-Fehler", off: "" }[Sync.status] || "";
+    if (u) {
+      return `<div class="settings-block" data-account><h4>Konto & Sync</h4>
+        <div class="account-row">
+          ${u.photoURL ? `<img class="account-pic" src="${esc(u.photoURL)}" alt="">` : `<span class="account-pic ph">👤</span>`}
+          <div class="account-info"><strong>${esc(u.displayName || "Angemeldet")}</strong>
+            <span class="muted small">${esc(u.email || "")}</span></div>
+          <button class="btn-soft sm" data-acc="logout">Abmelden</button>
+        </div>
+        <p class="muted small">📡 ${statusTxt} — Aufgaben, Bereiche, Ziele, Orte & Budget gleichen sich zwischen deinen Geräten ab. (Bilder bleiben pro Gerät.)</p>
+      </div>`;
+    }
+    return `<div class="settings-block" data-account><h4>Konto & Sync</h4>
+      <p class="muted small">Melde dich an, um deine Daten zwischen Mac & iPhone zu synchronisieren.</p>
+      <button class="btn-primary" data-acc="login">Mit Google anmelden</button>
+    </div>`;
+  }
+
   function openSettings() {
     const counts = { tasks: Store.state.tasks.length, areas: Store.state.areas.length };
     const tp = themePref();
     modal.innerHTML = `
       <h3 class="modal-title">⚙️ Einstellungen</h3>
+      ${accountBlock()}
       <div class="settings-block">
         <h4>Darstellung</h4>
         <div class="theme-picker">
@@ -1275,6 +1300,11 @@
       </div>`;
     showModal();
     modal.querySelector('[data-m="cancel"]').onclick = hideModal;
+
+    const accLogin = modal.querySelector('[data-acc="login"]');
+    if (accLogin) accLogin.onclick = () => { accLogin.textContent = "Öffne Google…"; Sync.login(); };
+    const accLogout = modal.querySelector('[data-acc="logout"]');
+    if (accLogout) accLogout.onclick = async () => { await Sync.logout(); openSettings(); toast("Abgemeldet"); };
 
     modal.querySelectorAll("[data-theme-pref]").forEach(b => b.onclick = () => {
       setThemePref(b.dataset.themePref);
@@ -1524,6 +1554,12 @@
     render();
     maybeNotify();
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+    // Cloud-Sync (Google-Login) starten — re-rendert bei Remote-Änderungen
+    if (window.Sync) {
+      Sync._onStatus = () => { if (!modalOv.hidden && modal.querySelector("[data-account]")) openSettings(); renderSidebarAccount(); };
+      Sync.init(() => render());
+    }
   }
+  function renderSidebarAccount() { /* Platzhalter für künftige Statusanzeige */ }
   start();
 })();
