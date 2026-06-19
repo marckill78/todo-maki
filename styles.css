@@ -10,7 +10,7 @@
   --ink-soft:  #8a8a9a;
   --line:      #ececf3;
   --accent:    #6c5ce7;
-  --accent-soft:#efedfd;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, var(--bg));
   --danger:    #d63031;
   --overdue:   #e74c3c;
   --radius:    14px;
@@ -313,7 +313,15 @@ input, select, textarea { font-family: inherit; font-size: 15px; color: var(--in
 .modal {
   background: var(--surface); border-radius: 18px; box-shadow: var(--shadow-lg);
   width: 100%; max-width: 440px; padding: 22px; display: flex; flex-direction: column; gap: 14px;
+  max-height: 88vh; overflow-y: auto;
 }
+.accent-row { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.accent-swatches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.accent-swatches button { width: 26px; height: 26px; border-radius: 50%; transition: transform .1s; }
+.accent-swatches button:hover { transform: scale(1.12); }
+.accent-swatches button.sel { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
+.accent-custom { width: 26px; height: 26px; border-radius: 50%; border: 1px dashed var(--line); display: grid; place-items: center; font-size: 13px; cursor: pointer; position: relative; overflow: hidden; }
+.accent-custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .modal-title { font-size: 19px; font-weight: 750; }
 .modal-input { font-size: 16px; }
 .modal-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
@@ -419,7 +427,7 @@ input, select, textarea { font-family: inherit; font-size: 15px; color: var(--in
   --ink-soft:  #9298a8;
   --line:      #2e323c;
   --accent:    #8b7cf0;
-  --accent-soft:#2a2742;
+  --accent-soft: color-mix(in srgb, var(--accent) 22%, var(--bg));
   --shadow:    0 1px 3px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.28);
   --shadow-lg: 0 12px 40px rgba(0,0,0,.5);
 }

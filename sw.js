@@ -1,9 +1,9 @@
 /* sw.js — Service Worker: App-Shell offline cachen.
    Daten liegen in IndexedDB (nicht hier). Cache-Version bei Änderungen hochzählen. */
-const CACHE = "maki-v12";
+const CACHE = "maki-v13";
 const ASSETS = [
-  "./", "./index.html", "./styles.css?v=12",
-  "./js/icons.js?v=12", "./js/db.js?v=12", "./js/store.js?v=12", "./js/app.js?v=12",
+  "./", "./index.html", "./styles.css?v=13",
+  "./js/icons.js?v=13", "./js/db.js?v=13", "./js/store.js?v=13", "./js/app.js?v=13",
   "./manifest.webmanifest",
   "./assets/icon-192.png", "./assets/icon-512.png", "./assets/icon-maskable.png"
 ];
@@ -17,13 +17,14 @@ self.addEventListener("activate", (e) => {
       .then(() => self.clients.claim())
   );
 });
+// Network-first: online immer die neueste Version, offline aus dem Cache.
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
+    fetch(e.request).then(res => {
       const copy = res.clone();
       caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
       return res;
-    }).catch(() => caches.match("./index.html")))
+    }).catch(() => caches.match(e.request).then(hit => hit || caches.match("./index.html")))
   );
 });

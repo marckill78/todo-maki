@@ -230,7 +230,7 @@
       html += controlsBar();
       html += listSection("Überfällig", applySort(applyFilters(overdue)));
       html += listSection(overdue.length ? "Heute" : "", applySort(applyFilters(rest)), { alwaysShow: !overdue.length });
-      html += listSection("Erledigt", done);
+      if (!hideDone()) html += listSection("Erledigt", done);
     }
     content.innerHTML = html;
   }
@@ -249,7 +249,7 @@
     else {
       html += controlsBar({ area: false });
       html += listSection("", applySort(applyFilters(open, { area: false })), { alwaysShow: true });
-      html += listSection("Erledigt", done);
+      if (!hideDone()) html += listSection("Erledigt", done);
     }
     content.innerHTML = html;
     const eb = $("#edit-area-btn");
@@ -330,9 +330,13 @@
     });
   }
 
-  function mondayOf(d) {
-    const x = new Date(d); x.setHours(0,0,0,0);
-    x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  // Wochenstart-abhängig (1=Mo, 0=So): Versatz eines Wochentags ab Wochenanfang
+  const dowOffset = (jsDay) => (jsDay - weekStart() + 7) % 7;
+  const DOW_NAMES = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+  const weekDowLabels = () => Array.from({ length: 7 }, (_, i) => DOW_NAMES[(weekStart() + i) % 7]);
+  function mondayOf(d) {  // = Anfang der (konfigurierten) Woche
+    const x = new Date(d); x.setHours(0, 0, 0, 0);
+    x.setDate(x.getDate() - dowOffset(x.getDay()));
     return x;
   }
   function weekTitle(ref) {
@@ -343,7 +347,7 @@
 
   function renderCalMonth() {
     const y = calRef.getFullYear(), m = calRef.getMonth();
-    const startDow = (new Date(y, m, 1).getDay() + 6) % 7;
+    const startDow = dowOffset(new Date(y, m, 1).getDay());
     const daysInMonth = new Date(y, m + 1, 0).getDate();
     const today = Store.todayStr();
     let cells = "";
@@ -357,14 +361,14 @@
         <div class="cal-dots">${dots}${tasks.length > 4 ? `<span class="cal-more">+${tasks.length - 4}</span>` : ""}</div>
       </div>`;
     }
-    const dows = ["Mo","Di","Mi","Do","Fr","Sa","So"].map(d => `<div class="cal-dow">${d}</div>`).join("");
+    const dows = weekDowLabels().map(d => `<div class="cal-dow">${d}</div>`).join("");
     $("#cal-area").innerHTML = `<div class="cal-grid head">${dows}</div><div class="cal-grid">${cells}</div>`;
     $$("#cal-area .cal-cell[data-date]").forEach(c => c.onclick = () => showCalDay(c.dataset.date));
   }
 
   function renderCalWeek() {
     const mon = mondayOf(calRef), today = Store.todayStr();
-    const wd = ["Mo","Di","Mi","Do","Fr","Sa","So"];
+    const wd = weekDowLabels();
     let cols = "";
     for (let i = 0; i < 7; i++) {
       const day = new Date(mon.getTime() + i * 864e5);
@@ -1220,14 +1224,39 @@
           <button data-theme-pref="dark"   class="${tp==="dark"?"sel":""}">🌙 Dunkel</button>
           <button data-theme-pref="system" class="${tp==="system"?"sel":""}">🖥️ System</button>
         </div>
+        <div class="accent-row">
+          <span class="muted small">Akzentfarbe</span>
+          <div class="accent-swatches">
+            ${ACCENT_PRESETS.map(c => `<button data-accent="${c}" class="${c===accentPref()?"sel":""}" style="background:${c}"></button>`).join("")}
+            <label class="accent-custom" title="Eigene Farbe"><input type="color" data-accent-custom value="${accentPref()}">🎨</label>
+          </div>
+        </div>
+      </div>
+      <div class="settings-block">
+        <h4>Allgemein</h4>
+        <div class="field-row">
+          <label class="field"><span>Wochenstart</span>
+            <select data-s="week-start">
+              <option value="1" ${weekStart()===1?"selected":""}>Montag</option>
+              <option value="0" ${weekStart()===0?"selected":""}>Sonntag</option>
+            </select></label>
+          <label class="field"><span>Start-Ansicht</span>
+            <select data-s="start-view">
+              ${[["myday","☀️ Mein Tag"],["last","↩︎ Zuletzt"],["all","📋 Alle Aufgaben"],["calendar","📅 Kalender"],["goals","🎯 Ziele"],["places","📍 Orte"],["budget","💶 Budget"]]
+                .map(([v,l]) => `<option value="${v}" ${startViewPref()===v?"selected":""}>${l}</option>`).join("")}
+            </select></label>
+        </div>
+        <label class="toggle-field"><input type="checkbox" data-s="hide-done" ${hideDone()?"checked":""}><span>Erledigte Aufgaben ausblenden</span></label>
       </div>
       <div class="settings-block">
         <h4>Erinnerungen</h4>
         <label class="toggle-field">
           <input type="checkbox" data-s="reminders" ${remindersOn()?"checked":""}>
-          <span>Beim Öffnen an heute fällige Aufgaben erinnern</span>
+          <span>An heute fällige Aufgaben erinnern</span>
         </label>
-        <p class="muted small">Benachrichtigung beim ersten Öffnen pro Tag. (Auf dem iPhone erst nach Installation als App verfügbar.)</p>
+        <label class="field"><span>Uhrzeit (optional)</span>
+          <input type="time" data-s="reminder-time" value="${reminderTime()}" style="max-width:140px"></label>
+        <p class="muted small">Ohne Uhrzeit: beim ersten Öffnen pro Tag. Mit Uhrzeit: ab dann (solange die App offen ist). Auf dem iPhone erst nach Installation als App.</p>
       </div>
       <div class="settings-block">
         <h4>Backup</h4>
@@ -1239,6 +1268,7 @@
           </label>
         </div>
         <p class="muted small">Aktuell: ${counts.areas} Bereiche · ${counts.tasks} aktive Aufgaben</p>
+        <button class="link-btn danger" data-s="reset" style="align-self:flex-start">Alle Daten zurücksetzen…</button>
       </div>
       <div class="modal-actions"><span></span>
         <button class="btn-soft" data-m="cancel">Schließen</button>
@@ -1252,9 +1282,35 @@
       b.classList.add("sel");
     });
 
+    // Akzentfarbe
+    const pickAccent = (c) => {
+      setAccent(c);
+      modal.querySelectorAll("[data-accent]").forEach(x => x.classList.toggle("sel", x.dataset.accent === c));
+    };
+    modal.querySelectorAll("[data-accent]").forEach(b => b.onclick = () => pickAccent(b.dataset.accent));
+    modal.querySelector("[data-accent-custom]").oninput = (e) => pickAccent(e.target.value);
+
+    // Allgemein
+    modal.querySelector('[data-s="week-start"]').onchange = (e) => { localStorage.setItem("maki-week-start", e.target.value); };
+    modal.querySelector('[data-s="start-view"]').onchange = (e) => { localStorage.setItem("maki-start-view", e.target.value); };
+    modal.querySelector('[data-s="hide-done"]').onchange = (e) => { localStorage.setItem("maki-hide-done", e.target.checked ? "1" : "0"); render(); };
+
     modal.querySelector('[data-s="reminders"]').onchange = async (e) => {
-      if (e.target.checked) { const ok = await enableReminders(); e.target.checked = ok; if (ok) toast("Erinnerungen aktiviert"); }
-      else { disableReminders(); toast("Erinnerungen aus"); }
+      if (e.target.checked) { const ok = await enableReminders(); e.target.checked = ok; if (ok) { toast("Erinnerungen aktiviert"); maybeNotify(); } }
+      else { disableReminders(); clearTimeout(reminderTimer); toast("Erinnerungen aus"); }
+    };
+    modal.querySelector('[data-s="reminder-time"]').onchange = (e) => {
+      localStorage.setItem("maki-reminder-time", e.target.value);
+      localStorage.removeItem("maki-last-notified"); // damit die neue Zeit heute noch greift
+      maybeNotify();
+    };
+
+    // Alle Daten zurücksetzen
+    modal.querySelector('[data-s="reset"]').onclick = async () => {
+      if (!confirm("Wirklich ALLE Daten löschen? Aufgaben, Bereiche, Ziele, Orte und Budget werden unwiderruflich entfernt. (Tipp: vorher ein Backup exportieren.)")) return;
+      for (const s of ["areas", "tasks", "attachments", "goals", "places", "expenses", "media", "meta"]) await DB.clear(s);
+      ["maki-sort", "maki-hide-done", "maki-start-view", "maki-last-view", "maki-last-notified"].forEach(k => localStorage.removeItem(k));
+      location.reload();
     };
 
     modal.querySelector('[data-s="export"]').onclick = async () => {
@@ -1301,6 +1357,17 @@
     if (themePref() === "system") applyTheme("system");
   });
 
+  /* ============ WEITERE PRÄFERENZEN ============ */
+  const ACCENT_PRESETS = ["#6c5ce7", "#0984e3", "#00b894", "#e17055", "#d63031", "#e84393", "#00cec9", "#fdcb6e"];
+  const accentPref = () => localStorage.getItem("maki-accent") || "#6c5ce7";
+  function applyAccent(c = accentPref()) { document.documentElement.style.setProperty("--accent", c); }
+  function setAccent(c) { localStorage.setItem("maki-accent", c); applyAccent(c); }
+
+  const weekStart = () => +(localStorage.getItem("maki-week-start") ?? "1"); // 1=Mo, 0=So
+  const hideDone = () => localStorage.getItem("maki-hide-done") === "1";
+  const reminderTime = () => localStorage.getItem("maki-reminder-time") || "";
+  const startViewPref = () => localStorage.getItem("maki-start-view") || "myday";
+
   /* ============ ERINNERUNGEN / NOTIFICATIONS ============ */
   const remindersOn = () => localStorage.getItem("maki-reminders") === "on";
   async function enableReminders() {
@@ -1312,19 +1379,36 @@
   }
   function disableReminders() { localStorage.setItem("maki-reminders", "off"); }
 
-  // Beim Start: einmal pro Tag über heute fällige + überfällige Tasks erinnern
+  // Beim Start: einmal pro Tag über heute fällige + überfällige Tasks erinnern.
+  // Mit gesetzter Uhrzeit: erst ab dieser Zeit (bzw. solange offen, geplant per Timer).
+  let reminderTimer;
   function maybeNotify() {
     if (!remindersOn() || Notification.permission !== "granted") return;
-    const today = Store.todayStr();
-    if (localStorage.getItem("maki-last-notified") === today) return;
+    if (localStorage.getItem("maki-last-notified") === Store.todayStr()) return;
+    const t = reminderTime();
+    if (t) {
+      const [h, m] = t.split(":").map(Number);
+      const target = new Date(); target.setHours(h, m, 0, 0);
+      const delta = target - new Date();
+      if (delta > 0) {  // heute später → einplanen, solange die App offen bleibt
+        clearTimeout(reminderTimer);
+        reminderTimer = setTimeout(fireDailyNotification, Math.min(delta, 2 ** 31 - 1));
+        return;
+      }
+    }
+    fireDailyNotification();
+  }
+  function fireDailyNotification() {
+    if (!remindersOn() || Notification.permission !== "granted") return;
+    if (localStorage.getItem("maki-last-notified") === Store.todayStr()) return;
     const due = Store.myDayTasks().filter(t => !t.done && (Store.isDueToday(t) || Store.isOverdue(t)));
     if (!due.length) return;
     const overdue = due.filter(Store.isOverdue).length;
     const body = due.slice(0, 4).map(t => "• " + t.title).join("\n") + (due.length > 4 ? `\n…und ${due.length - 4} mehr` : "");
     try {
-      new Notification(`☀️ ${due.length} Aufgabe${due.length>1?"n":""} heute${overdue?` (${overdue} überfällig)`:""}`,
+      new Notification(`☀️ ${due.length} Aufgabe${due.length > 1 ? "n" : ""} heute${overdue ? ` (${overdue} überfällig)` : ""}`,
         { body, icon: "assets/icon-192.png", tag: "maki-daily" });
-      localStorage.setItem("maki-last-notified", today);
+      localStorage.setItem("maki-last-notified", Store.todayStr());
     } catch { /* z.B. iOS ohne installierte PWA */ }
   }
 
@@ -1336,6 +1420,7 @@
       if (item) {
         if (item.dataset.view === "settings") { closeSidebarMobile(); openSettings(); return; }
         view = { name: item.dataset.view, areaId: item.dataset.id || null };
+        if (item.dataset.view !== "notes") localStorage.setItem("maki-last-view", JSON.stringify(view));
         $("#search").value = "";
         closeSidebarMobile();
         render();
@@ -1428,7 +1513,13 @@
   /* ============ START ============ */
   async function start() {
     applyTheme();
+    applyAccent();
+    // Standardansicht beim Öffnen
+    const sv = startViewPref();
+    if (sv === "last") { try { view = JSON.parse(localStorage.getItem("maki-last-view")) || { name: "myday" }; } catch { view = { name: "myday" }; } }
+    else view = { name: sv, areaId: null };
     await Store.init();
+    if (view.name === "area" && !Store.areaById(view.areaId)) view = { name: "myday" };
     bindGlobal();
     render();
     maybeNotify();
