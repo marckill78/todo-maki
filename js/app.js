@@ -74,6 +74,13 @@
   // Fortschritts-Farbe: 0% rot → 50% gelb → 100% grün (sauberer HSL-Verlauf)
   const pctColor = (p) => `hsl(${Math.round((p || 0) * 1.2)} 72% 45%)`;
 
+  // Aufgeklappte Unteraufgaben-Listen (merkt sich, welche Tasks offen sind)
+  const expandedSubs = new Set(JSON.parse(localStorage.getItem("maki-expanded-subs") || "[]"));
+  function toggleSubs(id) {
+    expandedSubs.has(id) ? expandedSubs.delete(id) : expandedSubs.add(id);
+    localStorage.setItem("maki-expanded-subs", JSON.stringify([...expandedSubs]));
+  }
+
   // Liste per Drag sortierbar machen (Pointer-Events, Maus + Touch).
   // handleSel = Greifelement, itemSel = sortierbares Element mit data-Attribut "key".
   function makeSortable(ul, handleSel, itemSel, key, onReorder) {
@@ -185,11 +192,11 @@
         <div class="task-meta">
           ${t.due ? `<span class="meta ${overdue ? "overdue" : ""}">📅 ${fmtDate(t.due)}</span>` : ""}
           ${t.repeat ? `<span class="meta">🔁 ${REPEAT_LABEL[t.repeat.type]}</span>` : ""}
-          ${subCount ? `<span class="meta">☑ ${t.subtasks.filter(s => s.done).length}/${subCount}</span>` : ""}
+          ${subCount ? `<button class="meta meta-toggle" data-subs-toggle><span class="chev">${expandedSubs.has(t.id) ? "▾" : "▸"}</span> ☑ ${t.subtasks.filter(s => s.done).length}/${subCount}</button>` : ""}
           ${area && view.name !== "area" ? `<span class="meta meta-area" style="--chip:${area.color}">${area.emoji} ${esc(area.name)}</span>` : ""}
         </div>
         ${subCount ? `<div class="progress"><span style="width:${pct}%;background:${pctColor(pct)}"></span></div>` : ""}
-        ${subCount ? `<ul class="task-subs">${(t.subtasks || []).map(subRowList).join("")}</ul>` : ""}
+        ${subCount && expandedSubs.has(t.id) ? `<ul class="task-subs">${(t.subtasks || []).map(subRowList).join("")}</ul>` : ""}
       </div>
     </li>`;
   }
@@ -1462,6 +1469,8 @@
     content.addEventListener("click", async (e) => {
       const li = e.target.closest(".task"); if (!li) return;
       const id = li.dataset.id;
+      // Unteraufgaben auf-/zuklappen
+      if (e.target.closest("[data-subs-toggle]")) { toggleSubs(id); render(); return; }
       // Inline-Unteraufgabe abhaken (nicht das Panel öffnen)
       const subrow = e.target.closest("[data-subrow]");
       if (subrow) {
