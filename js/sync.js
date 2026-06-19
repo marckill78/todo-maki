@@ -61,12 +61,18 @@ const Sync = (() => {
   async function login() {
     if (!isReady()) { alert("Sync ist noch nicht bereit – Seite neu laden und nochmal versuchen."); return; }
     const provider = new firebase.auth.GoogleAuthProvider();
-    // Weiterleitung statt Popup: funktioniert auch in der installierten PWA / bei Popup-Blockern
     try {
-      await auth.signInWithRedirect(provider);
+      // Popup zuerst (klappt meist am Desktop und zeigt Fehler sofort)
+      await auth.signInWithPopup(provider);
     } catch (e) {
-      console.error("Login", e);
-      alert("Anmeldung fehlgeschlagen: " + (e && e.message ? e.message : e) + (e && e.code ? "\n(Code: " + e.code + ")" : ""));
+      const popupIssue = e && ["auth/popup-blocked", "auth/cancelled-popup-request",
+        "auth/popup-closed-by-user", "auth/operation-not-supported-in-this-environment"].includes(e.code);
+      if (popupIssue) {
+        try { await auth.signInWithRedirect(provider); }
+        catch (e2) { alert("Weiterleitung fehlgeschlagen:\n" + (e2.message || e2) + (e2.code ? "\n(Code: " + e2.code + ")" : "")); }
+      } else {
+        alert("Anmeldung fehlgeschlagen:\n" + (e && e.message ? e.message : e) + (e && e.code ? "\n(Code: " + e.code + ")" : ""));
+      }
     }
   }
   async function logout() {
