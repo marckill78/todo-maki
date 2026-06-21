@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v24";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v25";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -211,6 +211,18 @@
       </div>
     </li>`;
   }
+  // Einzelne Unteraufgabe als eigene Zeile in „Mein Tag" (mit Eltern-Kontext)
+  function mdSubtaskRow(t, s) {
+    const area = Store.areaById(t.areaId);
+    return `<li class="task md-subtask" data-id="${t.id}" data-sub="${s.id}">
+      <button class="check" data-act="sub-md-toggle" aria-label="Erledigt"><span class="check-box">${s.done ? "✓" : ""}</span></button>
+      <span class="task-chip" style="--chip:${area ? area.color : "#888"}">${area ? area.emoji : "☑"}</span>
+      <div class="task-body" data-act="open">
+        <div class="task-title-row"><span class="task-title">${esc(s.title)}</span></div>
+        <div class="task-meta"><span class="meta">↳ ${esc(t.title)}</span>${area ? `<span class="meta meta-area" style="--chip:${area.color}">${area.emoji} ${esc(area.name)}</span>` : ""}</div>
+      </div>
+    </li>`;
+  }
   // Kompakte Unteraufgabe für die Listenansicht (abhakbar, ohne Bearbeiten)
   function subRowList(s) {
     return `<li class="sub-inline ${s.done ? "done" : ""}" data-subrow="${s.id}">
@@ -241,15 +253,22 @@
     const rest = open.filter(t => !Store.isOverdue(t));
     const mdGoals = Store.state.goals.filter(g => g.myDay && !g.achieved);
     const mdPlaces = Store.state.places.filter(p => p.myDay);
+    // Einzelne Unteraufgaben für Mein Tag (Eltern NICHT schon in Mein Tag, sonst inline gezeigt)
+    const mdSubs = [];
+    Store.state.tasks.forEach(t => {
+      if (Store.inMyDay(t)) return;
+      (t.subtasks || []).forEach(s => { if (s.myDay && !s.done) mdSubs.push({ t, s }); });
+    });
     const dateStr = new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
 
     let html = renderHeaderTitle("☀️ Mein Tag", dateStr);
-    if (!tasks.length && !mdGoals.length && !mdPlaces.length) {
-      html += emptyState("Nichts für heute 🎉", "Füge Aufgaben hinzu oder markiere Aufgaben, Ziele & Orte für „Mein Tag“.");
+    if (!tasks.length && !mdGoals.length && !mdPlaces.length && !mdSubs.length) {
+      html += emptyState("Nichts für heute 🎉", "Markiere Aufgaben, Unteraufgaben, Ziele oder Orte für „Mein Tag“.");
     } else {
       if (tasks.length) html += controlsBar();
       html += listSection("Überfällig", applySort(applyFilters(overdue)));
       html += listSection(overdue.length ? "Heute" : "", applySort(applyFilters(rest)), { alwaysShow: tasks.length && !overdue.length });
+      if (mdSubs.length) html += `<div class="list-block">${overdue.length || rest.length ? "" : ""}<ul class="task-list">${mdSubs.map(({ t, s }) => mdSubtaskRow(t, s)).join("")}</ul></div>`;
       if (!hideDone()) html += listSection("Erledigt", done);
       if (mdGoals.length) html += `<div class="list-block"><h3 class="block-title">🎯 Ziele <span class="block-n">${mdGoals.length}</span></h3><div class="card-grid">${mdGoals.map(goalCard).join("")}</div></div>`;
       if (mdPlaces.length) html += `<div class="list-block"><h3 class="block-title">📍 Orte <span class="block-n">${mdPlaces.length}</span></h3><div class="card-grid">${mdPlaces.map(placeCard).join("")}</div></div>`;
@@ -1233,7 +1252,7 @@
         <div class="field"><span>Unteraufgaben <span class="muted">${Store.progress(t)}%</span></span>
           <div class="progress lg"><span style="width:${Store.progress(t)}%;background:${pctColor(Store.progress(t))}"></span></div>
           <ul class="subtasks" data-subs>
-            ${(t.subtasks||[]).map(s => subRow(s)).join("")}
+            ${(t.subtasks||[]).map(s => subRow(s, true)).join("")}
           </ul>
           <div class="sub-add">
             <input type="text" data-sub-new placeholder="Unteraufgabe hinzufügen…">
@@ -1256,11 +1275,12 @@
         </div>
       </div>`;
   }
-  function subRow(s) {
+  function subRow(s, showMyDay = false) {
     return `<li class="sub ${s.done ? "done" : ""}" data-sub="${s.id}">
       <span class="sub-drag" title="Ziehen zum Sortieren">⠿</span>
       <button class="check sm" data-sub-toggle><span class="check-box">${s.done ? "✓" : ""}</span></button>
       <span class="sub-title" data-sub-edit contenteditable="true" spellcheck="false">${esc(s.title)}</span>
+      ${showMyDay ? `<button class="icon-btn sm sub-md ${s.myDay ? "on" : ""}" data-sub-md title="Zu „Mein Tag“">☀️</button>` : ""}
       <button class="icon-btn sm" data-sub-del>✕</button></li>`;
   }
   // Bearbeitete Unteraufgabe speichern (Enter beendet, Klick woandershin auch)
@@ -1361,6 +1381,11 @@
         t.subtasks = t.subtasks.filter(s => s.id !== sid);
         await Store.updateTask(t.id, { subtasks: t.subtasks }); refreshSubs(t); render();
       }
+      if (e.target.closest("[data-sub-md]")) {
+        const s = t.subtasks.find(s => s.id === sid);
+        s.myDay = !s.myDay;
+        await Store.updateTask(t.id, { subtasks: t.subtasks }); refreshSubs(t); render();
+      }
     };
     // Unteraufgaben per Drag sortieren
     makeSortable(subsEl, ".sub-drag", "[data-sub]", "sub", async (ids) => {
@@ -1394,7 +1419,7 @@
   }
   function refreshSubs(t) {
     const fresh = Store.state.tasks.find(x => x.id === t.id);
-    panel.querySelector("[data-subs]").innerHTML = (fresh.subtasks || []).map(subRow).join("");
+    panel.querySelector("[data-subs]").innerHTML = (fresh.subtasks || []).map(s => subRow(s, true)).join("");
     const bar = panel.querySelector(".progress.lg span");
     bar.style.width = Store.progress(fresh) + "%";
     bar.style.background = pctColor(Store.progress(fresh));
@@ -1798,6 +1823,14 @@
     content.addEventListener("click", async (e) => {
       const li = e.target.closest(".task"); if (!li) return;
       const id = li.dataset.id;
+      // Einzelne Mein-Tag-Unteraufgabe abhaken (in Mein Tag)
+      if (e.target.closest('[data-act="sub-md-toggle"]')) {
+        const sid = li.dataset.sub;
+        const t = Store.state.tasks.find(t => t.id === id);
+        const s = t && (t.subtasks || []).find(s => s.id === sid);
+        if (s) { await Store.toggleSubtask(id, sid, !s.done); render(); }
+        return;
+      }
       // Unteraufgaben auf-/zuklappen
       if (e.target.closest("[data-subs-toggle]")) { toggleSubs(id); render(); return; }
       // Inline-Unteraufgabe abhaken (nicht das Panel öffnen)
