@@ -25,10 +25,13 @@ const Sync = (() => {
   let onChange = () => {};
   let renderTimer = null;
 
+  let authResolved = false;   // true, sobald Firebase den Login-Status kennt
+  let lastError = "";
+
   const isReady = () => !!(auth && db);
   const isOn = () => !!user;
 
-  function setStatus(s) { status = s; updateUI(); }
+  function setStatus(s, msg) { status = s; lastError = msg || ""; updateUI(); }
   function updateUI() {
     // app.js kann eine Callback setzen, um Konto-UI zu aktualisieren
     if (Sync._onStatus) Sync._onStatus();
@@ -51,8 +54,10 @@ const Sync = (() => {
       db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); // Offline-Cache
       auth.onAuthStateChanged(async (u) => {
         user = u;
+        authResolved = true;
         if (u) { await onLogin(u.uid); }
         else { onLogout(); }
+        updateUI();
       });
       // Ergebnis eines Redirect-Logins auswerten (und Fehler sichtbar machen)
       auth.getRedirectResult().catch((e) => {
@@ -89,11 +94,15 @@ const Sync = (() => {
   // Lokale Schreibvorgänge → Firestore (von db.js aufgerufen)
   function pushDoc(coll, obj) {
     if (!isOn() || applyingRemote) return;
-    docRef(user.uid, coll, obj.id).set(sanitize(obj)).catch(e => console.warn("push", coll, e));
+    docRef(user.uid, coll, obj.id).set(sanitize(obj)).catch(e => onWriteError(e));
   }
   function pushDelete(coll, id) {
     if (!isOn() || applyingRemote) return;
-    docRef(user.uid, coll, id).delete().catch(e => console.warn("del", coll, e));
+    docRef(user.uid, coll, id).delete().catch(e => onWriteError(e));
+  }
+  function onWriteError(e) {
+    console.warn("Sync-Schreibfehler", e);
+    setStatus("error", (e && e.message) || String(e));
   }
   // Firestore mag kein undefined
   function sanitize(o) { return JSON.parse(JSON.stringify(o)); }
@@ -141,7 +150,7 @@ const Sync = (() => {
       await Store.reload(); onChange();
       startListeners(uid);
       setStatus("on");
-    } catch (e) { console.error("onLogin", e); applyingRemote = false; setStatus("error"); }
+    } catch (e) { console.error("onLogin", e); applyingRemote = false; setStatus("error", (e && e.message) || String(e)); }
   }
 
   function onLogout() { stopListeners(); user = null; setStatus("off"); }
@@ -170,6 +179,8 @@ const Sync = (() => {
     init, login, logout, pushDoc, pushDelete, isOn, isReady,
     get user() { return user; },
     get status() { return status; },
+    get authResolved() { return authResolved; },
+    get lastError() { return lastError; },
     _onStatus: null
   };
 })();

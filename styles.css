@@ -330,6 +330,21 @@ input, select, textarea { font-family: inherit; font-size: 15px; color: var(--in
 .modal-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
 .modal-actions > div { display: flex; gap: 8px; }
 
+/* ============ LOGIN-GATE ============ */
+.auth-gate {
+  position: fixed; inset: 0; z-index: 200; background: var(--bg);
+  display: grid; place-items: center; padding: 24px;
+}
+.auth-gate-card {
+  max-width: 380px; text-align: center; display: flex; flex-direction: column;
+  align-items: center; gap: 14px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 20px; padding: 36px 28px; box-shadow: var(--shadow-lg);
+}
+.auth-gate-card .brand-mark.lg { width: 54px; height: 54px; font-size: 30px; border-radius: 15px; }
+.auth-gate-card h2 { font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
+.auth-gate-card p { color: var(--ink-soft); font-size: 14.5px; line-height: 1.5; }
+.auth-gate-card .btn-primary { width: 100%; padding: 12px; font-size: 15px; margin-top: 4px; }
+
 /* ============ KONTO / SYNC ============ */
 .account-row { display: flex; align-items: center; gap: 11px; }
 .account-pic { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
@@ -495,6 +510,11 @@ input, select, textarea { font-family: inherit; font-size: 15px; color: var(--in
 .goal-img-edit img { width: 100%; max-height: 180px; object-fit: cover; border-radius: 12px; }
 .goal-img-ph { width: 100%; height: 110px; border-radius: 12px; background: var(--surface-2); display: grid; place-items: center; font-size: 40px; }
 .btn-soft.sm, .link-btn.sm { font-size: 13px; padding: 6px 12px; }
+.img-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.img-url { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; background: var(--surface-2); outline: none; font-size: 13.5px; color: var(--ink); }
+.img-url:focus { border-color: var(--accent); }
+.map-embed { border-radius: 12px; overflow: hidden; border: 1px solid var(--line); line-height: 0; }
+.map-embed iframe { width: 100%; height: 200px; border: 0; }
 
 /* Sterne- & Preis-Picker */
 .star-picker, .price-picker { display: flex; gap: 3px; }

@@ -639,7 +639,9 @@
   function placeCard(p) {
     const t = PLACE_TYPES[p.type] || {};
     return `<div class="place-card" data-id="${p.id}">
-      ${p.mediaId ? `<div class="card-img"><img data-media="${p.mediaId}" alt=""></div>` : `<div class="card-img placeholder">${t.icon || "📍"}</div>`}
+      ${p.mediaId ? `<div class="card-img"><img data-media="${p.mediaId}" alt=""></div>`
+        : p.imageUrl ? `<div class="card-img"><img src="${esc(p.imageUrl)}" alt="" loading="lazy"></div>`
+        : `<div class="card-img placeholder">${t.icon || "📍"}</div>`}
       <div class="card-body">
         <div class="card-top">
           <span class="chip-tag">${t.icon || ""} ${t.label || ""}</span>
@@ -672,9 +674,15 @@
       <div class="panel-body">
         <input class="panel-title-input" data-pl="name" placeholder="Name des Ortes" value="${esc(cur.name)}">
         <div class="goal-img-edit">
-          ${cur.mediaId ? `<img data-media="${cur.mediaId}" alt="">` : `<div class="goal-img-ph">${(PLACE_TYPES[cur.type]||{}).icon || "📍"}</div>`}
-          <label class="btn-soft sm">📷 Bild${cur.mediaId ? " ändern" : ""}<input type="file" accept="image/*" data-pl="img" hidden></label>
-          ${cur.mediaId ? `<button class="link-btn danger sm" data-pl="img-del">Bild entfernen</button>` : ""}
+          ${cur.mediaId ? `<img data-media="${cur.mediaId}" alt="">`
+            : cur.imageUrl ? `<img src="${esc(cur.imageUrl)}" alt="">`
+            : `<div class="goal-img-ph">${(PLACE_TYPES[cur.type]||{}).icon || "📍"}</div>`}
+          <div class="img-actions">
+            <label class="btn-soft sm">📷 Hochladen<input type="file" accept="image/*" data-pl="img" hidden></label>
+            <button class="btn-soft sm" data-pl="img-search">🔍 Bilder suchen</button>
+            ${(cur.mediaId || cur.imageUrl) ? `<button class="link-btn danger sm" data-pl="img-del">entfernen</button>` : ""}
+          </div>
+          <input type="url" class="img-url" data-pl="imageUrl" placeholder="…oder Bild-URL einfügen" value="${esc(cur.imageUrl || "")}">
         </div>
         <div class="field-row">
           <label class="field"><span>Typ</span><select data-pl="type">${typeOpts}</select></label>
@@ -692,6 +700,9 @@
         <label class="field"><span>Telefon</span><input type="tel" data-pl="phone" placeholder="+352 …" value="${esc(cur.phone)}"></label>
         <label class="field"><span>Adresse</span><input type="text" data-pl="address" placeholder="Straße, Ort" value="${esc(cur.address)}"></label>
         <label class="field"><span>Google-Maps-Link (optional)</span><input type="url" data-pl="mapsUrl" placeholder="https://maps.google.com/…" value="${esc(cur.mapsUrl)}"></label>
+        ${(cur.address || cur.mapsUrl) ? `<div class="field"><span>Karte</span>
+          <div class="map-embed"><iframe loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+            src="https://maps.google.com/maps?q=${encodeURIComponent(cur.address || cur.name)}&output=embed"></iframe></div></div>` : ""}
         <label class="field"><span>Tags (Komma-getrennt)</span><input type="text" data-pl="tags" placeholder="z.B. Italienisch, Terrasse" value="${esc((cur.tags||[]).join(", "))}"></label>
         <label class="field"><span>Notizen</span><textarea data-pl="notes" rows="3" placeholder="Notizen…">${esc(cur.notes)}</textarea></label>
       </div>`;
@@ -745,8 +756,17 @@
     const imgDel = panel.querySelector('[data-pl="img-del"]');
     if (imgDel) imgDel.onclick = async () => {
       const cp = Store.state.places.find(x => x.id === pid);
-      if (cp.mediaId) await Store.delMedia(cp.mediaId);
-      await Store.updatePlace(pid, { mediaId: null }); openPlacePanel(pid);
+      if (cp && cp.mediaId) await Store.delMedia(cp.mediaId);
+      await save({ mediaId: null, imageUrl: "" }); openPlacePanel(pid);
+    };
+    // Bild-URL (synchronisiert sich, anders als hochgeladene Bilder)
+    panel.querySelector('[data-pl="imageUrl"]').onchange = async (e) => {
+      await save({ imageUrl: e.target.value.trim() }); openPlacePanel(pid);
+    };
+    // Google-Bildersuche im neuen Tab
+    panel.querySelector('[data-pl="img-search"]').onclick = () => {
+      const q = panel.querySelector('[data-pl="name"]').value.trim() || "Ort";
+      window.open("https://www.google.com/search?tbm=isch&q=" + encodeURIComponent(q), "_blank", "noopener");
     };
   }
 
@@ -1227,6 +1247,9 @@
     const u = Sync.user;
     const statusTxt = { syncing: "Synchronisiere…", on: "Synchronisiert ✓", error: "Sync-Fehler", off: "" }[Sync.status] || "";
     if (u) {
+      const isErr = Sync.status === "error";
+      const errHint = /permission|insufficient/i.test(Sync.lastError || "")
+        ? "Wahrscheinlich sind die Firestore-Regeln noch nicht veröffentlicht." : "";
       return `<div class="settings-block" data-account><h4>Konto & Sync</h4>
         <div class="account-row">
           ${u.photoURL ? `<img class="account-pic" src="${esc(u.photoURL)}" alt="">` : `<span class="account-pic ph">👤</span>`}
@@ -1234,7 +1257,9 @@
             <span class="muted small">${esc(u.email || "")}</span></div>
           <button class="btn-soft sm" data-acc="logout">Abmelden</button>
         </div>
-        <p class="muted small">📡 ${statusTxt} — Aufgaben, Bereiche, Ziele, Orte & Budget gleichen sich zwischen deinen Geräten ab. (Bilder bleiben pro Gerät.)</p>
+        ${isErr
+          ? `<p class="budget-warn">⚠ Sync-Fehler: ${esc(Sync.lastError || "unbekannt")}${errHint ? "<br>" + errHint : ""}</p>`
+          : `<p class="muted small">📡 ${statusTxt} — Aufgaben, Bereiche, Ziele, Orte & Budget gleichen sich zwischen deinen Geräten ab. (Bilder bleiben pro Gerät, außer per Bild-URL.)</p>`}
       </div>`;
     }
     return `<div class="settings-block" data-account><h4>Konto & Sync</h4>
@@ -1565,10 +1590,18 @@
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
     // Cloud-Sync (Google-Login) starten — re-rendert bei Remote-Änderungen
     if (window.Sync) {
-      Sync._onStatus = () => { if (!modalOv.hidden && modal.querySelector("[data-account]")) openSettings(); renderSidebarAccount(); };
+      Sync._onStatus = () => { if (!modalOv.hidden && modal.querySelector("[data-account]")) openSettings(); updateAuthGate(); };
       Sync.init(() => render());
+      $("#auth-gate-login").onclick = () => { $("#auth-gate-login").textContent = "Öffne Google…"; Sync.login(); };
     }
+    updateAuthGate();
   }
-  function renderSidebarAccount() { /* Platzhalter für künftige Statusanzeige */ }
+  // Pflicht-Anmeldung: Gate zeigen, sobald klar ist, dass niemand eingeloggt ist (nur Live-Domain)
+  function updateAuthGate() {
+    const gate = $("#auth-gate"); if (!gate) return;
+    const show = window.Sync && Sync.isReady() && Sync.authResolved && !Sync.isOn()
+      && location.hostname !== "127.0.0.1";
+    gate.hidden = !show;
+  }
   start();
 })();

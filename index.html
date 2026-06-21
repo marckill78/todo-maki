@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="icon" href="assets/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=19" />
+  <link rel="stylesheet" href="styles.css?v=20" />
   <script>
     /* Theme früh setzen, um Flash zu vermeiden */
     (function () {
@@ -99,15 +99,26 @@
   <!-- Toast -->
   <div class="toast" id="toast" hidden></div>
 
+  <!-- Login-Gate: Pflicht-Anmeldung (nur auf der Live-Domain aktiv) -->
+  <div class="auth-gate" id="auth-gate" hidden>
+    <div class="auth-gate-card">
+      <span class="brand-mark lg">✓</span>
+      <h2>ToDo&nbsp;Maki</h2>
+      <p>Melde dich mit Google an, um deine Aufgaben, Ziele, Orte und dein Budget auf allen Geräten synchron zu halten.</p>
+      <button class="btn-primary" id="auth-gate-login">Mit Google anmelden</button>
+      <p class="muted small" id="auth-gate-err"></p>
+    </div>
+  </div>
+
   <!-- Firebase (Auth + Firestore) für Google-Login & Geräte-Sync -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
-  <script src="js/icons.js?v=19"></script>
-  <script src="js/db.js?v=19"></script>
-  <script src="js/sync.js?v=19"></script>
-  <script src="js/store.js?v=19"></script>
-  <script src="js/app.js?v=19"></script>
+  <script src="js/icons.js?v=20"></script>
+  <script src="js/db.js?v=20"></script>
+  <script src="js/sync.js?v=20"></script>
+  <script src="js/store.js?v=20"></script>
+  <script src="js/app.js?v=20"></script>
 </body>
 </html>

@@ -431,7 +431,7 @@ const Store = (() => {
       address: data.address || "", mapsUrl: data.mapsUrl || "",
       rating: data.rating || 0, price: data.price || 0,
       status: data.status || "want", visitedAt: data.visitedAt || null,
-      mediaId: data.mediaId || null, tags: data.tags || [],
+      mediaId: data.mediaId || null, imageUrl: data.imageUrl || "", tags: data.tags || [],
       order: state.places.length, createdAt: Date.now()
     };
     await DB.put("places", place); state.places.push(place); return place;
