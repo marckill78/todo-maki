@@ -182,13 +182,17 @@
     const overdue = Store.isOverdue(t);
     const subCount = (t.subtasks || []).length;
     const area = Store.areaById(t.areaId);
+    // Symbol/Farbe vom Bereich übernehmen, wenn kein eigenes (oder noch das alte Default 📝)
+    const useArea = area && (!t.emoji || t.emoji === "📝");
+    const chipEmoji = useArea ? area.emoji : t.emoji;
+    const chipColor = useArea ? area.color : t.color;
     return `
     <li class="task ${t.done ? "is-done" : ""} ${overdue ? "is-overdue" : ""}" data-id="${t.id}">
       ${canDrag() ? `<span class="drag-handle" title="Ziehen zum Sortieren">⠿</span>` : ""}
       <button class="check" data-act="toggle" aria-label="Erledigt">
         <span class="check-box">${t.done ? "✓" : ""}</span>
       </button>
-      <span class="task-chip" style="--chip:${t.color}">${t.emoji}</span>
+      <span class="task-chip" style="--chip:${chipColor}">${chipEmoji}</span>
       <div class="task-body" data-act="open">
         <div class="task-title-row">
           ${prioBadge(t.priority)}
@@ -234,18 +238,25 @@
     const done = tasks.filter(t => t.done);
     const overdue = open.filter(Store.isOverdue);
     const rest = open.filter(t => !Store.isOverdue(t));
+    const mdGoals = Store.state.goals.filter(g => g.myDay && !g.achieved);
+    const mdPlaces = Store.state.places.filter(p => p.myDay);
     const dateStr = new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
 
     let html = renderHeaderTitle("☀️ Mein Tag", dateStr);
-    if (!tasks.length) {
-      html += emptyState("Nichts für heute 🎉", "Füge Aufgaben hinzu oder markiere sie für „Mein Tag“.");
+    if (!tasks.length && !mdGoals.length && !mdPlaces.length) {
+      html += emptyState("Nichts für heute 🎉", "Füge Aufgaben hinzu oder markiere Aufgaben, Ziele & Orte für „Mein Tag“.");
     } else {
-      html += controlsBar();
+      if (tasks.length) html += controlsBar();
       html += listSection("Überfällig", applySort(applyFilters(overdue)));
-      html += listSection(overdue.length ? "Heute" : "", applySort(applyFilters(rest)), { alwaysShow: !overdue.length });
+      html += listSection(overdue.length ? "Heute" : "", applySort(applyFilters(rest)), { alwaysShow: tasks.length && !overdue.length });
       if (!hideDone()) html += listSection("Erledigt", done);
+      if (mdGoals.length) html += `<div class="list-block"><h3 class="block-title">🎯 Ziele <span class="block-n">${mdGoals.length}</span></h3><div class="card-grid">${mdGoals.map(goalCard).join("")}</div></div>`;
+      if (mdPlaces.length) html += `<div class="list-block"><h3 class="block-title">📍 Orte <span class="block-n">${mdPlaces.length}</span></h3><div class="card-grid">${mdPlaces.map(placeCard).join("")}</div></div>`;
     }
     content.innerHTML = html;
+    $$("#content .goal-card").forEach(c => c.onclick = () => openGoalPanel(c.dataset.id));
+    $$("#content .place-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]")) openPlacePanel(c.dataset.id); });
+    loadMediaImages();
   }
 
   function viewArea() {
@@ -589,6 +600,7 @@
           <div class="sub-add"><input type="text" data-g-step-new placeholder="Schritt hinzufügen…"><button class="icon-btn" data-g="add-step">＋</button></div>
         </div>
         <label class="field"><span>Notizen</span><textarea data-g="notes" rows="3" placeholder="Notizen…">${esc(cur.notes)}</textarea></label>
+        <label class="toggle-field"><input type="checkbox" data-g="myDay" ${cur.myDay ? "checked" : ""}><span>☀️ Zu „Mein Tag“ hinzufügen</span></label>
         <label class="toggle-field"><input type="checkbox" data-g="achieved" ${cur.achieved ? "checked" : ""}><span>✓ Als erreicht markieren</span></label>
       </div>`;
     panel.hidden = false; panelOv.hidden = false;
@@ -607,6 +619,7 @@
     panel.querySelector('[data-g="category"]').onchange = (e) => save({ category: e.target.value });
     panel.querySelector('[data-g="targetYear"]').onchange = (e) => save({ targetYear: e.target.value ? +e.target.value : null });
     panel.querySelector('[data-g="notes"]').onchange = (e) => save({ notes: e.target.value });
+    panel.querySelector('[data-g="myDay"]').onchange = (e) => { save({ myDay: e.target.checked }); render(); };
     panel.querySelector('[data-g="achieved"]').onchange = (e) => { save({ achieved: e.target.checked }); };
     panel.querySelector('[data-g="img"]').onchange = async (e) => {
       const f = e.target.files[0]; if (!f) return;
@@ -668,6 +681,12 @@
       const cg = Store.state.goals.find(x => x.id === gid); if (!cg) return;
       cg.steps = ids.map(id => (cg.steps || []).find(s => s.id === id)).filter(Boolean);
       await Store.updateGoal(gid, { steps: cg.steps });
+    });
+    // Zwischenschritt-Text bearbeiten
+    bindSubEditing(stepsEl, async (sid, title) => {
+      const cg = Store.state.goals.find(x => x.id === gid); if (!cg) return;
+      const s = (cg.steps || []).find(s => s.id === sid);
+      if (s && title && s.title !== title) { s.title = title; await Store.updateGoal(gid, { steps: cg.steps }); }
     });
   }
   function refreshGoalSteps(gid) {
@@ -838,6 +857,7 @@
             src="https://maps.google.com/maps?q=${encodeURIComponent(cur.address || cur.name)}&output=embed"></iframe></div></div>` : ""}
         <label class="field"><span>Tags (Komma-getrennt)</span><input type="text" data-pl="tags" placeholder="z.B. Italienisch, Terrasse" value="${esc((cur.tags||[]).join(", "))}"></label>
         <label class="field"><span>Notizen</span><textarea data-pl="notes" rows="3" placeholder="Notizen…">${esc(cur.notes)}</textarea></label>
+        <label class="toggle-field"><input type="checkbox" data-pl-myday ${cur.myDay ? "checked" : ""}><span>☀️ Zu „Mein Tag“ hinzufügen</span></label>
       </div>`;
     panel.hidden = false; panelOv.hidden = false;
     requestAnimationFrame(() => panel.classList.add("open"));
@@ -860,6 +880,7 @@
     bindVal('[data-pl="mapsUrl"]', "mapsUrl");
     bindVal('[data-pl="visitedAt"]', "visitedAt", v => v || null);
     bindVal('[data-pl="notes"]', "notes");
+    panel.querySelector("[data-pl-myday]").onchange = async (e) => { await save({ myDay: e.target.checked }); render(); };
     panel.querySelector('[data-pl="tags"]').onchange = (e) => save({ tags: e.target.value.split(",").map(t => t.trim()).filter(Boolean) });
     // Sterne
     panel.querySelectorAll('[data-pl="rating"] [data-star]').forEach(b => b.onclick = async () => {
@@ -915,6 +936,36 @@
      MODUL: BUDGET
      ============================================================ */
   let budgetRef = new Date();
+
+  // Effektives Budget je Kategorie mit Rest-Übertrag aus Vormonaten (Rollover).
+  // effektiv(M) = Limit + (effektiv(M-1) − ausgegeben(M-1)); nur Kategorien mit Limit.
+  async function effectiveBudgets(currentYm) {
+    const all = await DB.getAll("expenses");
+    const spent = {}; let minYm = currentYm;
+    all.forEach(e => {
+      const ym = (e.date || "").slice(0, 7); if (!ym) return;
+      (spent[ym] = spent[ym] || {});
+      spent[ym][e.category] = (spent[ym][e.category] || 0) + e.amount;
+      if (ym < minYm) minYm = ym;
+    });
+    const res = {};
+    for (const cat of Store.state.budgetCategories) {
+      if (!cat.limit) continue;
+      let [y, m] = minYm.split("-").map(Number);
+      const [cy, cm] = currentYm.split("-").map(Number);
+      let carry = 0;
+      while (y < cy || (y === cy && m <= cm)) {
+        const ym = `${y}-${String(m).padStart(2, "0")}`;
+        const eff = cat.limit + carry;
+        if (ym === currentYm) { res[cat.id] = eff; break; }
+        carry = eff - ((spent[ym] && spent[ym][cat.id]) || 0);
+        m++; if (m > 12) { m = 1; y++; }
+      }
+      if (res[cat.id] === undefined) res[cat.id] = cat.limit + carry;
+    }
+    return res;
+  }
+
   async function viewBudget() {
     const ym = `${budgetRef.getFullYear()}-${String(budgetRef.getMonth() + 1).padStart(2, "0")}`;
     const monthName = budgetRef.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
@@ -952,20 +1003,31 @@
       body.outerHTML = `<div id="budget-body">${emptyState("Keine Ausgaben", "Erfasse Ausgaben mit „＋ Ausgabe“.")}</div>`;
       return;
     }
-    const overCount = catData.filter(c => c.limit && c.sum > c.limit).length;
+    const effLimits = await effectiveBudgets(ym);
+    const overCount = catData.filter(c => effLimits[c.id] != null && c.sum > effLimits[c.id]).length;
     body.outerHTML = `<div id="budget-body">
       <div class="budget-top">
         ${donutSvg(catData, total)}
         <div class="budget-legend">
           <div class="budget-total"><span class="muted">Gesamt ${monthName}</span><strong>${fmtEur(total)}</strong></div>
-          ${overCount ? `<div class="budget-warn">⚠ ${overCount} Kategorie${overCount>1?"n":""} über Limit</div>` : ""}
-          ${catData.map(c => { const over = c.limit && c.sum > c.limit;
-            return `<div class="legend-row">
-            <span class="legend-dot" style="background:${c.color}"></span>
-            <span class="legend-name">${c.icon} ${esc(c.name)}</span>
-            <span class="legend-bar"><span style="width:${c.limit ? Math.min(100, Math.round(c.sum/c.limit*100)) : Math.round(c.sum/total*100)}%;background:${over ? "var(--overdue)" : c.color}"></span></span>
-            <span class="legend-val">${fmtEur(c.sum)}${c.limit ? ` <small class="lim ${over ? "over" : ""}">/ ${fmtEur(c.limit)}</small>` : ""}</span>
-          </div>`; }).join("")}
+          ${overCount ? `<div class="budget-warn">⚠ ${overCount} Kategorie${overCount>1?"n":""} über Budget</div>` : ""}
+          ${catData.map(c => {
+            const eff = effLimits[c.id];
+            const hasLimit = eff != null;
+            const over = hasLimit && c.sum > eff;
+            const pct = hasLimit ? Math.min(100, Math.round(c.sum / Math.max(eff, 1) * 100)) : Math.round(c.sum / total * 100);
+            const carry = hasLimit ? eff - (c.limit || 0) : 0;
+            return `<div class="bgt-cat ${over ? "over" : ""}">
+              <div class="bgt-cat-top">
+                <span class="legend-dot" style="background:${c.color}"></span>
+                <span class="bgt-cat-name">${c.icon} ${esc(c.name)}</span>
+                <span class="bgt-cat-spent">${fmtEur(c.sum)}</span>
+              </div>
+              <div class="bgt-cat-bar"><span style="width:${pct}%;background:${over ? "var(--overdue)" : c.color}"></span></div>
+              ${hasLimit ? `<div class="bgt-cat-rest ${over ? "over" : ""}">${over
+                ? `${fmtEur(c.sum - eff)} über Budget`
+                : `noch ${fmtEur(eff - c.sum)} von ${fmtEur(eff)}`}${Math.abs(carry) >= 0.01 ? ` · ${carry > 0 ? "+" : ""}${fmtEur(carry)} Übertrag` : ""}</div>` : ""}
+            </div>`; }).join("")}
         </div>
       </div>
       <h3 class="block-title" style="margin-top:8px">Ausgaben <span class="block-n">${expenses.length}</span></h3>
@@ -1197,8 +1259,19 @@
     return `<li class="sub ${s.done ? "done" : ""}" data-sub="${s.id}">
       <span class="sub-drag" title="Ziehen zum Sortieren">⠿</span>
       <button class="check sm" data-sub-toggle><span class="check-box">${s.done ? "✓" : ""}</span></button>
-      <span class="sub-title">${esc(s.title)}</span>
+      <span class="sub-title" data-sub-edit contenteditable="true" spellcheck="false">${esc(s.title)}</span>
       <button class="icon-btn sm" data-sub-del>✕</button></li>`;
+  }
+  // Bearbeitete Unteraufgabe speichern (Enter beendet, Klick woandershin auch)
+  function bindSubEditing(listEl, onSave) {
+    listEl.addEventListener("keydown", (e) => {
+      if (e.target.matches("[data-sub-edit]") && e.key === "Enter") { e.preventDefault(); e.target.blur(); }
+    });
+    listEl.addEventListener("focusout", (e) => {
+      const el = e.target.closest("[data-sub-edit]"); if (!el) return;
+      const li = el.closest("[data-sub]"); if (!li) return;
+      onSave(li.dataset.sub, el.textContent.trim());
+    });
   }
   function attRow(a) {
     return `<li class="att" data-att="${a.id}">
@@ -1292,6 +1365,12 @@
     makeSortable(subsEl, ".sub-drag", "[data-sub]", "sub", async (ids) => {
       t.subtasks = ids.map(id => (t.subtasks || []).find(s => s.id === id)).filter(Boolean);
       await Store.updateTask(t.id, { subtasks: t.subtasks }); render();
+    });
+    // Unteraufgaben-Text bearbeiten
+    bindSubEditing(subsEl, async (sid, title) => {
+      const cur = Store.state.tasks.find(x => x.id === t.id); if (!cur) return;
+      const s = (cur.subtasks || []).find(s => s.id === sid);
+      if (s && title && s.title !== title) { s.title = title; await Store.updateTask(t.id, { subtasks: cur.subtasks }); render(); }
     });
 
     // Anhänge

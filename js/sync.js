@@ -64,6 +64,11 @@ const Sync = (() => {
       auth.getRedirectResult().catch((e) => {
         if (e && e.code) alert("Login-Problem: " + e.message + "\n(Code: " + e.code + ")");
       });
+      // Beim Zurückkehren zur App erneut abgleichen (verhindert „muss mich neu einloggen")
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && user && status !== "syncing") onLogin(user.uid);
+      });
+      window.addEventListener("online", () => { if (user && status !== "syncing") onLogin(user.uid); });
     } catch (e) { console.error("Sync init", e); setStatus("error"); }
   }
 

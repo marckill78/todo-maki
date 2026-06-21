@@ -292,6 +292,8 @@ input, select, textarea { font-family: inherit; font-size: 15px; color: var(--in
 .sub { display: flex; align-items: center; gap: 9px; padding: 5px 4px; border-radius: 8px; }
 .sub:hover { background: var(--surface-2); }
 .sub-title { flex: 1; font-size: 14px; }
+.sub-title[contenteditable] { outline: none; border-radius: 5px; padding: 2px 4px; cursor: text; }
+.sub-title[contenteditable]:focus { background: var(--surface-2); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .sub.done .sub-title { text-decoration: line-through; color: var(--ink-soft); }
 .sub-drag { cursor: grab; color: var(--ink-soft); font-size: 13px; padding: 0 2px; user-select: none; touch-action: none; }
 .sub-drag:active { cursor: grabbing; }
@@ -562,6 +564,15 @@ input, select, textarea { font-family: inherit; font-size: 15px; color: var(--in
 .legend-bar { height: 7px; background: var(--line); border-radius: 20px; overflow: hidden; }
 .legend-bar span { display: block; height: 100%; border-radius: 20px; }
 .legend-val { font-weight: 700; text-align: right; }
+/* Budget-Kategorie-Zeile (mit Limit/Übertrag) */
+.bgt-cat { display: flex; flex-direction: column; gap: 5px; padding: 2px 0; }
+.bgt-cat-top { display: flex; align-items: center; gap: 9px; }
+.bgt-cat-name { flex: 1; font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bgt-cat-spent { font-weight: 800; font-size: 14px; }
+.bgt-cat-bar { height: 7px; background: var(--line); border-radius: 20px; overflow: hidden; }
+.bgt-cat-bar span { display: block; height: 100%; border-radius: 20px; transition: width .3s; }
+.bgt-cat-rest { font-size: 12px; color: var(--ink-soft); padding-left: 23px; }
+.bgt-cat-rest.over { color: var(--overdue); font-weight: 700; }
 .expense-list { list-style: none; display: flex; flex-direction: column; gap: 7px; }
 .expense-row { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 11px 13px; cursor: pointer; box-shadow: var(--shadow); }
 .expense-row:hover { border-color: var(--accent); }

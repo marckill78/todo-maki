@@ -211,15 +211,18 @@ const Store = (() => {
 
   /* ---------- Mutationen: Tasks ---------- */
   async function addTask(data) {
+    const areaId = data.areaId || (state.areas[0] && state.areas[0].id) || null;
+    const area = areaById(areaId);
     const task = {
       id: uid(),
-      areaId: data.areaId || (state.areas[0] && state.areas[0].id) || null,
+      areaId,
       title: (data.title || "").trim() || "Unbenannte Aufgabe",
       notes: data.notes || "",
       due: data.due || null,
       priority: data.priority || 0,        // 0 = keine, 1–5
-      emoji: data.emoji || "📝",
-      color: data.color || MAKI_COLORS[0],
+      // Standardmäßig Symbol + Farbe des Bereichs übernehmen
+      emoji: data.emoji || (area ? area.emoji : "📝"),
+      color: data.color || (area ? area.color : MAKI_COLORS[0]),
       myDay: !!data.myDay,
       myDayDate: data.myDay ? todayStr() : null,
       repeat: data.repeat || null,          // {type, interval}
@@ -400,7 +403,7 @@ const Store = (() => {
       id: uid(), title: (data.title || "").trim() || "Neues Ziel",
       notes: data.notes || "", category: data.category || "",
       targetYear: data.targetYear || null, mediaId: data.mediaId || null, imageUrl: data.imageUrl || "",
-      steps: data.steps || [], achieved: false, achievedAt: null,
+      steps: data.steps || [], achieved: false, achievedAt: null, myDay: !!data.myDay,
       order: state.goals.length, createdAt: Date.now()
     };
     await DB.put("goals", goal); state.goals.push(goal); return goal;
@@ -434,7 +437,7 @@ const Store = (() => {
       rating: data.rating || 0, price: data.price || 0,
       status: data.status || "want", visitedAt: data.visitedAt || null,
       mediaId: data.mediaId || null, imageUrl: data.imageUrl || "", tags: data.tags || [],
-      lat: data.lat ?? null, lng: data.lng ?? null,
+      lat: data.lat ?? null, lng: data.lng ?? null, myDay: !!data.myDay,
       order: state.places.length, createdAt: Date.now()
     };
     await DB.put("places", place); state.places.push(place); return place;
