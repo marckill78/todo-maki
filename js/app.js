@@ -1891,7 +1891,17 @@
     bindGlobal();
     render();
     maybeNotify();
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+    if ("serviceWorker" in navigator) {
+      // Übernimmt ein neuer Service Worker die Kontrolle → einmal automatisch neu laden,
+      // damit immer die aktuelle Version läuft (behebt „alte Version startet").
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (refreshing) return; refreshing = true; location.reload();
+      });
+      navigator.serviceWorker.register("sw.js")
+        .then(reg => reg.update().catch(() => {}))   // sofort auf Updates prüfen
+        .catch(() => {});
+    }
     // Cloud-Sync (Google-Login) starten — re-rendert bei Remote-Änderungen
     if (window.Sync) {
       Sync._onStatus = () => { if (!modalOv.hidden && modal.querySelector("[data-account]")) openSettings(); updateAuthGate(); };
