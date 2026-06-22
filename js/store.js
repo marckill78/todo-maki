@@ -8,9 +8,20 @@ const Store = (() => {
     tasks: [],           // nur nicht-archivierte
     goals: [],           // Bucketlist
     places: [],          // Orte
+    purchases: [],       // Anschaffungen
     budgetCategories: [], // Budget-Kategorien
+    purchaseCategories: [], // Anschaffungs-Kategorien
     loaded: false
   };
+
+  const DEFAULT_PURCHASE_CATEGORIES = [
+    { id: "moebel",     name: "Möbel",      color: "#e17055", icon: "🛋️" },
+    { id: "elektronik", name: "Elektronik", color: "#0984e3", icon: "💻" },
+    { id: "werkzeug",   name: "Werkzeug",   color: "#fdcb6e", icon: "🔧" },
+    { id: "haushalt",   name: "Haushalt",   color: "#00b894", icon: "🏠" },
+    { id: "kleidung",   name: "Kleidung",   color: "#e84393", icon: "👕" },
+    { id: "sonstiges",  name: "Sonstiges",  color: "#636e72", icon: "📦" }
+  ];
 
   const DEFAULT_BUDGET_CATEGORIES = [
     { id: "lebensmittel", name: "Lebensmittel", color: "#00b894", icon: "🛒" },
@@ -73,7 +84,9 @@ const Store = (() => {
 
     state.goals = (await DB.getAll("goals")).sort((a, b) => (a.order || 0) - (b.order || 0));
     state.places = (await DB.getAll("places")).sort((a, b) => (a.order || 0) - (b.order || 0));
+    state.purchases = (await DB.getAll("purchases")).sort((a, b) => (a.order || 0) - (b.order || 0));
     state.budgetCategories = (await DB.metaGet("budget-categories")) || DEFAULT_BUDGET_CATEGORIES;
+    state.purchaseCategories = (await DB.metaGet("purchase-categories")) || DEFAULT_PURCHASE_CATEGORIES;
 
     await runMigrations();
     await runDailyCleanup();   // erledigte Tasks von gestern → Archiv
@@ -86,6 +99,7 @@ const Store = (() => {
     state.tasks = (await DB.getAll("tasks")).filter(t => !t.archived);
     state.goals = (await DB.getAll("goals")).sort((a, b) => (a.order || 0) - (b.order || 0));
     state.places = (await DB.getAll("places")).sort((a, b) => (a.order || 0) - (b.order || 0));
+    state.purchases = (await DB.getAll("purchases")).sort((a, b) => (a.order || 0) - (b.order || 0));
   }
 
   /* Einmalige Datenmigrationen (greifen in bestehende Installationen) */
@@ -336,8 +350,10 @@ const Store = (() => {
     const tasks = await DB.getAll("tasks");        // inkl. archivierte
     const goals = await DB.getAll("goals");
     const places = await DB.getAll("places");
+    const purchases = await DB.getAll("purchases");
     const expenses = await DB.getAll("expenses");
     const budgetCategories = (await DB.metaGet("budget-categories")) || null;
+    const purchaseCategories = (await DB.metaGet("purchase-categories")) || null;
     const attsRaw = await DB.getAll("attachments");
     const attachments = [];
     for (const a of attsRaw) {
@@ -350,8 +366,8 @@ const Store = (() => {
     const media = [];
     for (const m of mediaRaw) media.push({ id: m.id, data: await blobToDataURL(m.blob) });
     return {
-      app: "todo-maki", version: 2, exportedAt: new Date().toISOString(),
-      areas, tasks, goals, places, expenses, budgetCategories, attachments, media
+      app: "todo-maki", version: 3, exportedAt: new Date().toISOString(),
+      areas, tasks, goals, places, purchases, expenses, budgetCategories, purchaseCategories, attachments, media
     };
   }
 
@@ -360,7 +376,7 @@ const Store = (() => {
     if (!data || data.app !== "todo-maki" || !Array.isArray(data.areas))
       throw new Error("Ungültige Backup-Datei.");
     if (mode === "replace") {
-      for (const s of ["areas", "tasks", "attachments", "goals", "places", "expenses", "media"]) await DB.clear(s);
+      for (const s of ["areas", "tasks", "attachments", "goals", "places", "purchases", "expenses", "media"]) await DB.clear(s);
     }
     const existIds = mode === "merge"
       ? new Set([...(await DB.getAll("areas")), ...(await DB.getAll("tasks"))].map(x => x.id))
@@ -369,8 +385,10 @@ const Store = (() => {
     for (const t of data.tasks) if (!(mode === "merge" && existIds.has(t.id))) await DB.put("tasks", t);
     for (const g of (data.goals || [])) await DB.put("goals", g);
     for (const p of (data.places || [])) await DB.put("places", p);
+    for (const pu of (data.purchases || [])) await DB.put("purchases", pu);
     for (const ex of (data.expenses || [])) await DB.put("expenses", ex);
     if (data.budgetCategories) await DB.metaSet("budget-categories", data.budgetCategories);
+    if (data.purchaseCategories) await DB.metaSet("purchase-categories", data.purchaseCategories);
     for (const at of (data.attachments || [])) {
       const blob = await dataURLToBlob(at.data);
       await DB.put("attachments", { id: at.id, taskId: at.taskId, name: at.name, type: at.type, blob });
@@ -384,7 +402,9 @@ const Store = (() => {
     state.tasks = (await DB.getAll("tasks")).filter(t => !t.archived);
     state.goals = (await DB.getAll("goals")).sort((a, b) => (a.order || 0) - (b.order || 0));
     state.places = (await DB.getAll("places")).sort((a, b) => (a.order || 0) - (b.order || 0));
+    state.purchases = (await DB.getAll("purchases")).sort((a, b) => (a.order || 0) - (b.order || 0));
     state.budgetCategories = (await DB.metaGet("budget-categories")) || state.budgetCategories;
+    state.purchaseCategories = (await DB.metaGet("purchase-categories")) || state.purchaseCategories;
     return { areas: data.areas.length, tasks: data.tasks.length, attachments: (data.attachments || []).length };
   }
 
@@ -454,6 +474,38 @@ const Store = (() => {
     state.places = state.places.filter(p => p.id !== id);
   }
 
+  /* ---------- Anschaffungen ---------- */
+  async function addPurchase(data = {}) {
+    const p = {
+      id: uid(), name: (data.name || "").trim() || "Neue Anschaffung",
+      category: data.category || (state.purchaseCategories[0] && state.purchaseCategories[0].id) || "sonstiges",
+      price: +data.price || 0, priority: data.priority || 0,
+      url: data.url || "", notes: data.notes || "",
+      status: data.status || "want", boughtAt: data.boughtAt || null,
+      mediaId: data.mediaId || null, imageUrl: data.imageUrl || "",
+      myDay: !!data.myDay, order: state.purchases.length, createdAt: Date.now()
+    };
+    await DB.put("purchases", p); state.purchases.push(p); return p;
+  }
+  async function updatePurchase(id, patch) {
+    const p = state.purchases.find(p => p.id === id); if (!p) return;
+    Object.assign(p, patch);
+    if (patch.status === "bought" && !p.boughtAt) p.boughtAt = todayStr();
+    if (patch.status === "want") p.boughtAt = null;
+    await DB.put("purchases", p); return p;
+  }
+  async function deletePurchase(id) {
+    const p = state.purchases.find(p => p.id === id);
+    if (p && p.mediaId) await delMedia(p.mediaId);
+    await DB.del("purchases", id);
+    state.purchases = state.purchases.filter(p => p.id !== id);
+  }
+  const purchaseCategoryById = (id) => state.purchaseCategories.find(c => c.id === id);
+  async function setPurchaseCategories(cats) {
+    state.purchaseCategories = cats;
+    await DB.metaSet("purchase-categories", cats);
+  }
+
   /* ---------- Budget ---------- */
   async function addExpense(data = {}) {
     const e = {
@@ -491,6 +543,7 @@ const Store = (() => {
     addMedia, getMedia, delMedia,
     addGoal, updateGoal, deleteGoal, goalProgress,
     addPlace, updatePlace, deletePlace,
+    addPurchase, updatePurchase, deletePurchase, purchaseCategoryById, setPurchaseCategories,
     addExpense, updateExpense, deleteExpense, expensesForMonth, categoryById, setBudgetCategories
   };
 })();

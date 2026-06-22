@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v25";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v26";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -253,6 +253,7 @@
     const rest = open.filter(t => !Store.isOverdue(t));
     const mdGoals = Store.state.goals.filter(g => g.myDay && !g.achieved);
     const mdPlaces = Store.state.places.filter(p => p.myDay);
+    const mdPurchases = Store.state.purchases.filter(p => p.myDay && p.status !== "bought");
     // Einzelne Unteraufgaben für Mein Tag (Eltern NICHT schon in Mein Tag, sonst inline gezeigt)
     const mdSubs = [];
     Store.state.tasks.forEach(t => {
@@ -262,8 +263,8 @@
     const dateStr = new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
 
     let html = renderHeaderTitle("☀️ Mein Tag", dateStr);
-    if (!tasks.length && !mdGoals.length && !mdPlaces.length && !mdSubs.length) {
-      html += emptyState("Nichts für heute 🎉", "Markiere Aufgaben, Unteraufgaben, Ziele oder Orte für „Mein Tag“.");
+    if (!tasks.length && !mdGoals.length && !mdPlaces.length && !mdPurchases.length && !mdSubs.length) {
+      html += emptyState("Nichts für heute 🎉", "Markiere Aufgaben, Unteraufgaben, Ziele, Orte oder Anschaffungen für „Mein Tag“.");
     } else {
       if (tasks.length) html += controlsBar();
       html += listSection("Überfällig", applySort(applyFilters(overdue)));
@@ -272,10 +273,12 @@
       if (!hideDone()) html += listSection("Erledigt", done);
       if (mdGoals.length) html += `<div class="list-block"><h3 class="block-title">🎯 Ziele <span class="block-n">${mdGoals.length}</span></h3><div class="card-grid">${mdGoals.map(goalCard).join("")}</div></div>`;
       if (mdPlaces.length) html += `<div class="list-block"><h3 class="block-title">📍 Orte <span class="block-n">${mdPlaces.length}</span></h3><div class="card-grid">${mdPlaces.map(placeCard).join("")}</div></div>`;
+      if (mdPurchases.length) html += `<div class="list-block"><h3 class="block-title">🛒 Anschaffungen <span class="block-n">${mdPurchases.length}</span></h3><div class="card-grid">${mdPurchases.map(purchaseCard).join("")}</div></div>`;
     }
     content.innerHTML = html;
     $$("#content .goal-card").forEach(c => c.onclick = () => openGoalPanel(c.dataset.id));
     $$("#content .place-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]")) openPlacePanel(c.dataset.id); });
+    $$("#content .purchase-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]")) openPurchasePanel(c.dataset.id); });
     loadMediaImages();
   }
 
@@ -953,6 +956,162 @@
   }
 
   /* ============================================================
+     MODUL: ANSCHAFFUNGEN
+     ============================================================ */
+  let purchasesFilter = { category: "all", status: "all" };
+  let purchasesSort = "recent"; // recent | priority | price | name
+
+  function viewPurchases() {
+    let list = [...Store.state.purchases];
+    if (purchasesFilter.category !== "all") list = list.filter(p => p.category === purchasesFilter.category);
+    if (purchasesFilter.status !== "all") list = list.filter(p => p.status === purchasesFilter.status);
+    if (purchasesSort === "price") list.sort((a, b) => (b.price || 0) - (a.price || 0));
+    else if (purchasesSort === "priority") list.sort((a, b) => (b.priority || 0) - (a.priority || 0) || (b.createdAt || 0) - (a.createdAt || 0));
+    else if (purchasesSort === "name") list.sort((a, b) => a.name.localeCompare(b.name, "de"));
+    else list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    const cats = Store.state.purchaseCategories;
+    const totalWant = Store.state.purchases.filter(p => p.status === "want").reduce((s, p) => s + (p.price || 0), 0);
+    const tab = (val, label) => `<button class="seg ${purchasesFilter.category === val ? "sel" : ""}" data-pcat="${val}">${label}</button>`;
+    const sortOpts = { recent: "Zuletzt", priority: "Priorität", price: "Preis", name: "Name" };
+    let html = `<div class="view-head">
+        <h2>🛒 Anschaffungen</h2>
+        <div class="cal-nav">
+          <button class="btn-soft" id="edit-pcats">⚙ Kategorien</button>
+          <button class="btn-primary" id="add-purchase">＋ Neu</button>
+        </div>
+      </div>
+      <p class="view-sub">Wunschliste · offen gesamt ${fmtEur(totalWant)}</p>
+      <div class="seg-group">${tab("all", "Alle")}${cats.map(c => tab(c.id, `${c.icon} ${esc(c.name)}`)).join("")}</div>
+      <div class="controls-bar">
+        <div class="ctrl"><span class="ctrl-label">Status</span>
+          <select id="pur-status">
+            <option value="all" ${purchasesFilter.status === "all" ? "selected" : ""}>Alle</option>
+            <option value="want" ${purchasesFilter.status === "want" ? "selected" : ""}>Will ich</option>
+            <option value="bought" ${purchasesFilter.status === "bought" ? "selected" : ""}>Gekauft</option>
+          </select></div>
+        <div class="ctrl"><span class="ctrl-label">Sortieren</span>
+          <select id="pur-sort">${Object.entries(sortOpts).map(([k, v]) => `<option value="${k}" ${purchasesSort === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+      </div>`;
+    if (!list.length) html += emptyState("Keine Anschaffungen", "Lege Wünsche und geplante Käufe an.");
+    else html += `<div class="card-grid">${list.map(purchaseCard).join("")}</div>`;
+    content.innerHTML = html;
+    $("#add-purchase").onclick = () => openPurchasePanel(null);
+    $("#edit-pcats").onclick = () => openCategoryEditor("purchase");
+    $("#pur-status").onchange = (e) => { purchasesFilter.status = e.target.value; render(); };
+    $("#pur-sort").onchange = (e) => { purchasesSort = e.target.value; render(); };
+    $$("[data-pcat]").forEach(b => b.onclick = () => { purchasesFilter.category = b.dataset.pcat; render(); });
+    $$("#content .purchase-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]")) openPurchasePanel(c.dataset.id); });
+    loadMediaImages();
+  }
+
+  function purchaseCard(p) {
+    const cat = Store.purchaseCategoryById(p.category) || { icon: "📦", name: p.category, color: "#888" };
+    const bought = p.status === "bought";
+    return `<div class="purchase-card ${bought ? "bought" : ""}" data-id="${p.id}">
+      ${p.mediaId ? `<div class="card-img"><img data-media="${p.mediaId}" alt=""></div>`
+        : p.imageUrl ? `<div class="card-img"><img src="${esc(p.imageUrl)}" alt="" loading="lazy"></div>`
+        : `<div class="card-img placeholder">${cat.icon}</div>`}
+      <div class="card-body">
+        <div class="card-top">
+          <span class="chip-tag" style="background:color-mix(in srgb, ${cat.color} 18%, transparent); color:${cat.color}">${cat.icon} ${esc(cat.name)}</span>
+          <span class="chip-tag ${bought ? "ok" : "soft"}">${bought ? "✓ Gekauft" : "Will ich"}</span>
+        </div>
+        <h3 class="card-title">${prioBadge(p.priority)} ${esc(p.name)}</h3>
+        <div class="card-sub">${p.price ? `<span class="price">${fmtEur(p.price)}</span>` : ""}</div>
+        ${p.url ? `<div class="place-actions"><a class="act-btn" data-pact href="${encodeURI(p.url)}" target="_blank" rel="noopener" title="Im Shop öffnen">🔗</a></div>` : ""}
+      </div>
+    </div>`;
+  }
+
+  function openPurchasePanel(id) {
+    const p = id ? Store.state.purchases.find(x => x.id === id) : null;
+    const isNew = !p;
+    const cur = p || { name: "", category: (Store.state.purchaseCategories[0] || {}).id, price: "", priority: 0, url: "", notes: "", status: "want", mediaId: null, imageUrl: "", myDay: false };
+    const catOpts = Store.state.purchaseCategories.map(c => `<option value="${c.id}" ${c.id === cur.category ? "selected" : ""}>${c.icon} ${esc(c.name)}</option>`).join("");
+    const catIcon = (Store.purchaseCategoryById(cur.category) || {}).icon || "🛒";
+    panel.innerHTML = `
+      <header class="panel-head">
+        <button class="icon-btn" data-p="close">✕</button>
+        ${isNew ? "" : `<button class="link-btn danger" data-pu="delete">Löschen</button>`}
+      </header>
+      <div class="panel-body">
+        <input class="panel-title-input" data-pu="name" placeholder="Was möchtest du anschaffen?" value="${esc(cur.name)}">
+        <div class="goal-img-edit">
+          ${cur.mediaId ? `<img data-media="${cur.mediaId}" alt="">`
+            : cur.imageUrl ? `<img src="${esc(cur.imageUrl)}" alt="">`
+            : `<div class="goal-img-ph">${catIcon}</div>`}
+          <div class="img-actions">
+            <label class="btn-soft sm">📷 Hochladen<input type="file" accept="image/*" data-pu="img" hidden></label>
+            <button class="btn-soft sm" data-pu="img-search">🔍 Bilder suchen</button>
+            ${(cur.mediaId || cur.imageUrl) ? `<button class="link-btn danger sm" data-pu="img-del">entfernen</button>` : ""}
+          </div>
+          <input type="url" class="img-url" data-pu="imageUrl" placeholder="…oder Bild-URL einfügen" value="${esc(cur.imageUrl || "")}">
+        </div>
+        <div class="field-row">
+          <label class="field"><span>Kategorie</span><select data-pu="category">${catOpts}</select></label>
+          <label class="field"><span>Preis (€)</span><input type="number" step="0.01" min="0" data-pu="price" value="${cur.price}" placeholder="0,00"></label>
+        </div>
+        <div class="field"><span>Priorität</span>${prioPicker(cur.priority)}</div>
+        <label class="field"><span>Status</span><select data-pu="status">
+          <option value="want" ${cur.status === "want" ? "selected" : ""}>Will ich</option>
+          <option value="bought" ${cur.status === "bought" ? "selected" : ""}>Gekauft</option>
+        </select></label>
+        <label class="field"><span>Shop-Link</span><input type="url" data-pu="url" placeholder="https://…" value="${esc(cur.url)}"></label>
+        <label class="field"><span>Notizen</span><textarea data-pu="notes" rows="3" placeholder="Notizen…">${esc(cur.notes)}</textarea></label>
+        <label class="toggle-field"><input type="checkbox" data-pu-myday ${cur.myDay ? "checked" : ""}><span>☀️ Zu „Mein Tag“ hinzufügen</span></label>
+      </div>`;
+    panel.hidden = false; panelOv.hidden = false;
+    requestAnimationFrame(() => panel.classList.add("open"));
+    loadMediaImages();
+
+    let pid = p ? p.id : null;
+    const ensure = async () => { if (!pid) { const np = await Store.addPurchase({ name: panel.querySelector('[data-pu="name"]').value.trim() || "Neue Anschaffung", category: panel.querySelector('[data-pu="category"]').value }); pid = np.id; } return pid; };
+    const save = async (patch) => { await ensure(); await Store.updatePurchase(pid, patch); };
+    const bindVal = (sel, key, fn) => { const el = panel.querySelector(sel); el.onchange = () => save({ [key]: fn ? fn(el.value) : el.value }); };
+
+    panel.querySelector('[data-p="close"]').onclick = () => { closePanel(); render(); };
+    const del = panel.querySelector('[data-pu="delete"]');
+    if (del) del.onclick = async () => { if (confirm("Anschaffung löschen?")) { await Store.deletePurchase(pid); closePanel(); render(); } };
+    bindVal('[data-pu="name"]', "name", v => v.trim() || "Neue Anschaffung");
+    bindVal('[data-pu="category"]', "category");
+    bindVal('[data-pu="price"]', "price", v => +v || 0);
+    bindVal('[data-pu="status"]', "status");
+    bindVal('[data-pu="url"]', "url");
+    bindVal('[data-pu="notes"]', "notes");
+    bindPrioPicker(panel, (pr) => save({ priority: pr }));
+    panel.querySelector("[data-pu-myday]").onchange = async (e) => { await save({ myDay: e.target.checked }); render(); };
+    panel.querySelector('[data-pu="imageUrl"]').onchange = async (e) => { await save({ imageUrl: e.target.value.trim() }); openPurchasePanel(pid); };
+    panel.querySelector('[data-pu="img-search"]').onclick = () => {
+      const q = panel.querySelector('[data-pu="name"]').value.trim() || "Produkt";
+      window.open("https://www.google.com/search?tbm=isch&q=" + encodeURIComponent(q), "_blank", "noopener");
+    };
+    panel.querySelector('[data-pu="img"]').onchange = async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      if (f.size > 6 * 1024 * 1024) { toast("Bild zu groß (max. 6 MB)"); return; }
+      await ensure();
+      const cp = Store.state.purchases.find(x => x.id === pid);
+      if (window.Sync && Sync.canUpload()) {
+        toast("Bild wird hochgeladen…");
+        try {
+          const url = await Sync.uploadImage(f);
+          if (url) { if (cp.mediaId) await Store.delMedia(cp.mediaId); await save({ imageUrl: url, mediaId: null }); openPurchasePanel(pid); return; }
+        } catch (err) { console.warn(err); toast("Upload fehlgeschlagen – lokal gespeichert"); }
+      }
+      if (cp.mediaId) await Store.delMedia(cp.mediaId);
+      const mediaId = await Store.addMedia(f);
+      await save({ mediaId, imageUrl: "" });
+      openPurchasePanel(pid);
+    };
+    const imgDel = panel.querySelector('[data-pu="img-del"]');
+    if (imgDel) imgDel.onclick = async () => {
+      const cp = Store.state.purchases.find(x => x.id === pid);
+      if (cp && cp.mediaId) await Store.delMedia(cp.mediaId);
+      await save({ mediaId: null, imageUrl: "" }); openPurchasePanel(pid);
+    };
+  }
+
+  /* ============================================================
      MODUL: BUDGET
      ============================================================ */
   let budgetRef = new Date();
@@ -1112,18 +1271,20 @@
     if (del) del.onclick = async () => { await Store.deleteExpense(ex.id); hideModal(); viewBudget(); };
   }
 
-  function openCategoryEditor() {
-    const rowHtml = (c) => `<div class="cat-row" data-cat-row data-id="${c.id || ""}">
+  function openCategoryEditor(type = "budget") {
+    const isBudget = type === "budget";
+    const current = isBudget ? Store.state.budgetCategories : Store.state.purchaseCategories;
+    const rowHtml = (c) => `<div class="cat-row ${isBudget ? "" : "no-limit"}" data-cat-row data-id="${c.id || ""}">
         <input class="cat-emoji" data-c="icon" maxlength="2" value="${esc(c.icon || "")}" placeholder="🙂">
         <input class="cat-name" data-c="name" value="${esc(c.name || "")}" placeholder="Name">
         <input type="color" data-c="color" value="${c.color || "#6c5ce7"}">
-        <input type="number" class="cat-limit" data-c="limit" min="0" step="1" value="${c.limit || ""}" placeholder="Limit €">
+        ${isBudget ? `<input type="number" class="cat-limit" data-c="limit" min="0" step="1" value="${c.limit || ""}" placeholder="Limit €">` : ""}
         <button class="icon-btn sm" data-cat-del title="Löschen">✕</button>
       </div>`;
     modal.innerHTML = `
-      <h3 class="modal-title">Budget-Kategorien</h3>
-      <p class="muted small">Emoji, Name, Farbe und optionales Monatslimit.</p>
-      <div class="cat-editor" data-cats>${Store.state.budgetCategories.map(rowHtml).join("")}</div>
+      <h3 class="modal-title">${isBudget ? "Budget-Kategorien" : "Anschaffungs-Kategorien"}</h3>
+      <p class="muted small">Emoji, Name, Farbe${isBudget ? " und optionales Monatslimit" : ""}.</p>
+      <div class="cat-editor" data-cats>${current.map(rowHtml).join("")}</div>
       <button class="btn-soft" id="cat-add">＋ Kategorie</button>
       <div class="modal-actions"><span></span>
         <div><button class="btn-soft" data-x="cancel">Abbrechen</button><button class="btn-primary" data-x="save">Speichern</button></div>
@@ -1137,15 +1298,16 @@
     modal.querySelector('[data-x="cancel"]').onclick = hideModal;
     modal.querySelector('[data-x="save"]').onclick = async () => {
       const cats = [...list.querySelectorAll("[data-cat-row]")].map(row => {
-        const get = (k) => row.querySelector(`[data-c="${k}"]`).value;
+        const get = (k) => { const el = row.querySelector(`[data-c="${k}"]`); return el ? el.value : ""; };
         const name = get("name").trim(); if (!name) return null;
         const id = row.dataset.id || (name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + Store.uid().slice(-3));
-        const limit = parseFloat(get("limit"));
-        return { id, name, icon: get("icon").trim() || "📦", color: get("color"), limit: limit > 0 ? limit : null };
+        const base = { id, name, icon: get("icon").trim() || "📦", color: get("color") };
+        if (isBudget) { const limit = parseFloat(get("limit")); base.limit = limit > 0 ? limit : null; }
+        return base;
       }).filter(Boolean);
       if (!cats.length) { toast("Mindestens eine Kategorie nötig"); return; }
-      await Store.setBudgetCategories(cats);
-      hideModal(); viewBudget();
+      if (isBudget) { await Store.setBudgetCategories(cats); hideModal(); viewBudget(); }
+      else { await Store.setPurchaseCategories(cats); hideModal(); viewPurchases(); }
     };
   }
 
@@ -1164,7 +1326,8 @@
     if (q) return renderSearch(q);
     ({ myday: viewMyDay, all: viewAll, area: viewArea,
        calendar: viewCalendar, archive: viewArchive, notes: viewNotes,
-       goals: viewGoals, places: viewPlaces, budget: viewBudget, stats: viewStats }[view.name] || viewMyDay)();
+       goals: viewGoals, places: viewPlaces, budget: viewBudget, stats: viewStats,
+       purchases: viewPurchases }[view.name] || viewMyDay)();
   }
   function renderSearch(q) {
     const ql = q.toLowerCase();
@@ -1172,16 +1335,19 @@
     const tasks = Store.search(q);
     const goals = Store.state.goals.filter(g => hit(g.title, g.notes, g.category, ...(g.steps || []).map(s => s.title)));
     const places = Store.state.places.filter(p => hit(p.name, p.notes, p.address, ...(p.tags || [])));
-    const total = tasks.length + goals.length + places.length;
+    const purchases = Store.state.purchases.filter(p => hit(p.name, p.notes, p.url));
+    const total = tasks.length + goals.length + places.length + purchases.length;
 
     let html = renderHeaderTitle(`🔍 Suche: „${q}“`, `${total} Treffer`);
     if (!total) html += emptyState("Nichts gefunden", "Andere Suchbegriffe versuchen.");
     if (tasks.length) html += `<div class="list-block"><h3 class="block-title">📋 Aufgaben <span class="block-n">${tasks.length}</span></h3><ul class="task-list">${tasks.map(taskRow).join("")}</ul></div>`;
     if (goals.length) html += `<div class="list-block"><h3 class="block-title">🎯 Ziele <span class="block-n">${goals.length}</span></h3><div class="card-grid">${goals.map(goalCard).join("")}</div></div>`;
     if (places.length) html += `<div class="list-block"><h3 class="block-title">📍 Orte <span class="block-n">${places.length}</span></h3><div class="card-grid">${places.map(placeCard).join("")}</div></div>`;
+    if (purchases.length) html += `<div class="list-block"><h3 class="block-title">🛒 Anschaffungen <span class="block-n">${purchases.length}</span></h3><div class="card-grid">${purchases.map(purchaseCard).join("")}</div></div>`;
     content.innerHTML = html;
     $$("#content .goal-card").forEach(c => c.onclick = () => openGoalPanel(c.dataset.id));
     $$("#content .place-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]")) openPlacePanel(c.dataset.id); });
+    $$("#content .purchase-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]")) openPurchasePanel(c.dataset.id); });
     loadMediaImages();
   }
 

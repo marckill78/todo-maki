@@ -16,10 +16,10 @@
 
 const DB = (() => {
   const DB_NAME = "todo-maki";
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
   let _db = null;
   // Diese Stores werden (bei aktivem Login) mit der Cloud synchronisiert
-  const SYNC_STORES = new Set(["areas", "tasks", "goals", "places", "expenses"]);
+  const SYNC_STORES = new Set(["areas", "tasks", "goals", "places", "expenses", "purchases"]);
 
   function open() {
     return new Promise((resolve, reject) => {
@@ -56,6 +56,9 @@ const DB = (() => {
         }
         if (!db.objectStoreNames.contains("media")) {
           db.createObjectStore("media", { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains("purchases")) {
+          db.createObjectStore("purchases", { keyPath: "id" }).createIndex("order", "order");
         }
       };
       req.onsuccess = (e) => { _db = e.target.result; resolve(_db); };

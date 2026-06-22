@@ -15,7 +15,7 @@ const Sync = (() => {
   };
 
   // Diese Stores werden synchronisiert (Bilder/Anhänge bleiben lokal pro Gerät)
-  const COLLECTIONS = ["areas", "tasks", "goals", "places", "expenses"];
+  const COLLECTIONS = ["areas", "tasks", "goals", "places", "purchases", "expenses"];
 
   let auth = null, db = null, storage = null;
   let user = null;
@@ -129,7 +129,8 @@ const Sync = (() => {
     try {
       // Ist dieses Gerät „frisch" (nur Default-Seed, keine echten Inhalte)?
       const localEmpty = !(await DB.getAll("tasks")).length && !(await DB.getAll("goals")).length &&
-                         !(await DB.getAll("places")).length && !(await DB.getAll("expenses")).length;
+                         !(await DB.getAll("places")).length && !(await DB.getAll("expenses")).length &&
+                         !(await DB.getAll("purchases")).length;
       // Hat die Cloud bereits Daten?
       let remoteHasData = false;
       const remoteCache = {};
