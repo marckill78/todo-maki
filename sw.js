@@ -1,9 +1,9 @@
 /* sw.js — Service Worker: App-Shell offline cachen.
    Daten liegen in IndexedDB (nicht hier). Cache-Version bei Änderungen hochzählen. */
-const CACHE = "maki-v30";
+const CACHE = "maki-v31";
 const ASSETS = [
-  "./", "./index.html", "./styles.css?v=30",
-  "./js/icons.js?v=30", "./js/db.js?v=30", "./js/sync.js?v=30", "./js/store.js?v=30", "./js/app.js?v=30",
+  "./", "./index.html", "./styles.css?v=31",
+  "./js/icons.js?v=31", "./js/db.js?v=31", "./js/sync.js?v=31", "./js/store.js?v=31", "./js/app.js?v=31",
   "./manifest.webmanifest",
   "./assets/icon-192.png", "./assets/icon-512.png", "./assets/icon-maskable.png"
 ];

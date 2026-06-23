@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v30";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v31";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -1968,12 +1968,24 @@
     </div>`;
   }
 
+  // Freemium-Block: Status + (vorläufiger) Testschalter für „Maki Plus".
+  function plusBlock() {
+    const on = isPlus();
+    return `<div class="settings-block">
+      <h4>Maki Plus ${on ? `<span class="plus-badge">aktiv</span>` : ``}</h4>
+      <p class="muted small">Plus schaltet die Cloud-Funktionen frei: <strong>Geräte-Sync</strong>, automatisches <strong>Cloud-Backup</strong> und <strong>Foto-Sync</strong>. Alle 7 Module (Aufgaben, Ziele, Orte, Budget …) bleiben lokal immer kostenlos und unbegrenzt — inkl. Export.</p>
+      <label class="toggle-field"><input type="checkbox" data-plus ${on ? "checked" : ""}><span>Plus aktiviert</span></label>
+      <p class="muted small">Vorläufiger Testschalter — wird später durch das App-Store-Abo ersetzt. Beim Umschalten lädt die App neu.</p>
+    </div>`;
+  }
+
   function openSettings() {
     const counts = { tasks: Store.state.tasks.length, areas: Store.state.areas.length };
     const tp = themePref();
     modal.innerHTML = `
       <h3 class="modal-title">⚙️ Einstellungen</h3>
       ${accountBlock()}
+      ${plusBlock()}
       <div class="settings-block">
         <h4>Darstellung</h4>
         <div class="theme-picker">
@@ -2047,6 +2059,13 @@
     if (accLogin) accLogin.onclick = () => { accLogin.textContent = "Öffne Google…"; Sync.login(); };
     const accLogout = modal.querySelector('[data-acc="logout"]');
     if (accLogout) accLogout.onclick = async () => { await Sync.logout(); openSettings(); toast("Abgemeldet"); };
+
+    const plusToggle = modal.querySelector("[data-plus]");
+    if (plusToggle) plusToggle.onchange = () => {
+      setPlus(plusToggle.checked);
+      // Sauberer Neustart, damit Sync/Listener konsistent an- bzw. abgeschaltet sind
+      location.reload();
+    };
 
     modal.querySelectorAll("[data-theme-pref]").forEach(b => b.onclick = () => {
       setThemePref(b.dataset.themePref);
@@ -2138,6 +2157,14 @@
   });
 
   /* ============ WEITERE PRÄFERENZEN ============ */
+  /* ============ FREEMIUM: „Maki Plus"-Berechtigung ============
+     Zentrale Weiche für die Cloud-Funktionen (Sync / Cloud-Backup / Foto-Sync).
+     Vorerst manueller Schalter in localStorage; in der App-Store-Version liefert
+     hier StoreKit/RevenueCat den echten Abo-Status (Default dann: aus bis gekauft).
+     Default jetzt „an", damit bestehende Nutzung (Marcs Sync) unverändert läuft. */
+  const isPlus = () => localStorage.getItem("maki-plus") !== "0";
+  const setPlus = (on) => localStorage.setItem("maki-plus", on ? "1" : "0");
+
   const ACCENT_PRESETS = ["#6c5ce7", "#0984e3", "#00b894", "#e17055", "#d63031", "#e84393", "#00cec9", "#fdcb6e"];
   const accentPref = () => localStorage.getItem("maki-accent") || "#6c5ce7";
   function applyAccent(c = accentPref()) {
@@ -2378,17 +2405,16 @@
     // Cloud-Sync (Google-Login) starten — re-rendert bei Remote-Änderungen
     if (window.Sync) {
       Sync._onStatus = () => { if (!modalOv.hidden && modal.querySelector("[data-account]")) openSettings(); updateAuthGate(); };
+      Sync.setEntitled(isPlus());          // Cloud-Funktionen nur mit „Plus"
       Sync.init(() => render());
       $("#auth-gate-login").onclick = () => { $("#auth-gate-login").textContent = "Öffne Google…"; Sync.login(); };
     }
     updateAuthGate();
   }
-  // Pflicht-Anmeldung: Gate zeigen, sobald klar ist, dass niemand eingeloggt ist (nur Live-Domain)
+  // Freemium: kein Pflicht-Login mehr — die App ist ohne Konto voll lokal nutzbar.
+  // Das Gate bleibt verborgen; die Anmeldung läuft über die Einstellungen (für Plus/Sync).
   function updateAuthGate() {
-    const gate = $("#auth-gate"); if (!gate) return;
-    const show = window.Sync && Sync.isReady() && Sync.authResolved && !Sync.isOn()
-      && location.hostname !== "127.0.0.1";
-    gate.hidden = !show;
+    const gate = $("#auth-gate"); if (gate) gate.hidden = true;
   }
   start();
 })();

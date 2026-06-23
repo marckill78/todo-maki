@@ -28,8 +28,13 @@ const Sync = (() => {
   let authResolved = false;   // true, sobald Firebase den Login-Status kennt
   let lastError = "";
 
+  // Freemium: Cloud-Funktionen nur mit aktivem „Plus". Wird von app.js via
+  // setEntitled(isPlus()) gesetzt. Default an → bestehendes Verhalten unverändert.
+  let entitled = true;
+  const setEntitled = (v) => { entitled = !!v; };
+
   const isReady = () => !!(auth && db);
-  const isOn = () => !!user;
+  const isOn = () => !!user && entitled;
 
   function setStatus(s, msg) { status = s; lastError = msg || ""; updateUI(); }
   function updateUI() {
@@ -125,6 +130,9 @@ const Sync = (() => {
   function sanitize(o) { return JSON.parse(JSON.stringify(o)); }
 
   async function onLogin(uid) {
+    // Ohne „Plus" keine Cloud-Aktivität — App bleibt rein lokal (auch bei
+    // gespeicherter Google-Sitzung). Identität (user) bleibt für die UI erhalten.
+    if (!entitled) { setStatus("off"); return; }
     setStatus("syncing");
     try {
       // Ist dieses Gerät „frisch" (nur Default-Seed, keine echten Inhalte)?
@@ -194,7 +202,8 @@ const Sync = (() => {
   function stopListeners() { unsubs.forEach(u => { try { u(); } catch {} }); unsubs = []; }
 
   return {
-    init, login, logout, pushDoc, pushDelete, isOn, isReady, uploadImage, canUpload,
+    init, login, logout, pushDoc, pushDelete, isOn, isReady, uploadImage, canUpload, setEntitled,
+    get entitled() { return entitled; },
     get user() { return user; },
     get status() { return status; },
     get authResolved() { return authResolved; },
