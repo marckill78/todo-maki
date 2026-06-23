@@ -35,6 +35,8 @@ const Store = (() => {
     { id: "schule",       name: "Schule",       color: "#fdcb6e", icon: "🏫" },
     { id: "gesundheit",   name: "Gesundheit",   color: "#0984e3", icon: "🩺" },
     { id: "transport",    name: "Transport",    color: "#fdcb6e", icon: "🚗" },
+    { id: "wohnen",       name: "Wohnen",       color: "#6c5ce7", icon: "🏡" },
+    { id: "freizeit",     name: "Freizeit",     color: "#00cec9", icon: "🎉" },
     { id: "sonstiges",    name: "Sonstiges",    color: "#636e72", icon: "📦" }
   ];
   // Vom Nutzer gewünschte Zusatz-Kategorien (für Migration bestehender Installationen)
@@ -90,6 +92,8 @@ const Store = (() => {
 
     await runMigrations();
     await runDailyCleanup();   // erledigte Tasks von gestern → Archiv
+    await ensureRecurringExpenses();   // fehlende Abo-Ausgaben nachtragen
+    await purgeOldTrash();             // Papierkorb-Einträge > 30 Tage entfernen
     state.loaded = true;
   }
 
@@ -297,17 +301,42 @@ const Store = (() => {
     return t;
   }
   async function deleteTask(id) {
+    const t = state.tasks.find(t => t.id === id); if (t) await trashItem("tasks", t);
     const atts = await DB.getByIndex("attachments", "taskId", id);
     for (const at of atts) await DB.del("attachments", at.id);
     await DB.del("tasks", id);
     state.tasks = state.tasks.filter(t => t.id !== id);
   }
   // Reihenfolge per Drag&Drop: ids in neuer Reihenfolge → order = Index
-  async function reorderTasks(orderedIds) {
-    for (let i = 0; i < orderedIds.length; i++) {
-      const t = state.tasks.find(t => t.id === orderedIds[i]);
-      if (t && t.order !== i) { t.order = i; await DB.put("tasks", t); }
+  async function reorderGeneric(store, arr, ids) {
+    for (let i = 0; i < ids.length; i++) {
+      const o = arr.find(x => x.id === ids[i]);
+      if (o && o.order !== i) { o.order = i; await DB.put(store, o); }
     }
+    arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+  }
+  const reorderTasks    = (ids) => reorderGeneric("tasks", state.tasks, ids);
+  const reorderGoals    = (ids) => reorderGeneric("goals", state.goals, ids);
+  const reorderPlaces   = (ids) => reorderGeneric("places", state.places, ids);
+  const reorderPurchases = (ids) => reorderGeneric("purchases", state.purchases, ids);
+
+  /* ---------- Papierkorb (Soft-Delete, 30 Tage) ---------- */
+  const TRASH_DAYS = 30;
+  async function trashItem(type, obj) {
+    await DB.put("trash", { id: uid(), type, origId: obj.id, title: obj.title || obj.name || obj.note || "Eintrag", data: obj, deletedAt: Date.now() });
+  }
+  const trashedItems = async () => (await DB.getAll("trash")).sort((a, b) => b.deletedAt - a.deletedAt);
+  async function restoreFromTrash(trashId) {
+    const entry = await DB.get("trash", trashId); if (!entry) return;
+    await DB.put(entry.type, entry.data, { fromRemote: false });
+    await DB.del("trash", trashId);
+    await reload();
+  }
+  const purgeTrashEntry = (trashId) => DB.del("trash", trashId);
+  async function emptyTrash() { for (const e of await DB.getAll("trash")) await DB.del("trash", e.id); }
+  async function purgeOldTrash() {
+    const cutoff = Date.now() - TRASH_DAYS * 864e5;
+    for (const e of await DB.getAll("trash")) if (e.deletedAt < cutoff) await DB.del("trash", e.id);
   }
 
   /* ---------- Anhänge ---------- */
@@ -437,7 +466,7 @@ const Store = (() => {
   }
   async function deleteGoal(id) {
     const g = state.goals.find(g => g.id === id);
-    if (g && g.mediaId) await delMedia(g.mediaId);
+    if (g) await trashItem("goals", g);
     await DB.del("goals", id);
     state.goals = state.goals.filter(g => g.id !== id);
   }
@@ -469,7 +498,7 @@ const Store = (() => {
   }
   async function deletePlace(id) {
     const p = state.places.find(p => p.id === id);
-    if (p && p.mediaId) await delMedia(p.mediaId);
+    if (p) await trashItem("places", p);
     await DB.del("places", id);
     state.places = state.places.filter(p => p.id !== id);
   }
@@ -496,7 +525,7 @@ const Store = (() => {
   }
   async function deletePurchase(id) {
     const p = state.purchases.find(p => p.id === id);
-    if (p && p.mediaId) await delMedia(p.mediaId);
+    if (p) await trashItem("purchases", p);
     await DB.del("purchases", id);
     state.purchases = state.purchases.filter(p => p.id !== id);
   }
@@ -510,7 +539,7 @@ const Store = (() => {
   async function addExpense(data = {}) {
     const e = {
       id: uid(), amount: +data.amount || 0, category: data.category || "sonstiges",
-      subcategory: data.subcategory || "",
+      subcategory: data.subcategory || "", recurringId: data.recurringId || null,
       note: data.note || "", date: data.date || todayStr(), createdAt: Date.now()
     };
     await DB.put("expenses", e); return e;
@@ -519,7 +548,10 @@ const Store = (() => {
     const e = await DB.get("expenses", id); if (!e) return;
     Object.assign(e, patch); await DB.put("expenses", e); return e;
   }
-  const deleteExpense = (id) => DB.del("expenses", id);
+  async function deleteExpense(id) {
+    const e = await DB.get("expenses", id); if (e) await trashItem("expenses", e);
+    await DB.del("expenses", id);
+  }
   async function expensesForMonth(ym) { // ym = "YYYY-MM"
     const all = await DB.getAll("expenses");
     return all.filter(e => (e.date || "").startsWith(ym)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -530,6 +562,36 @@ const Store = (() => {
     await DB.metaSet("budget-categories", cats);
   }
 
+  /* ---------- Wiederkehrende Ausgaben (Abos) ---------- */
+  const getRecurring = async () => (await DB.metaGet("recurring-expenses")) || [];
+  async function setRecurring(list) { await DB.metaSet("recurring-expenses", list); }
+  // Für jeden Monat von Start bis aktuell eine Ausgabe anlegen, falls noch nicht vorhanden
+  async function ensureRecurringExpenses() {
+    const recs = await getRecurring(); if (!recs.length) return 0;
+    const all = await DB.getAll("expenses");
+    const have = new Set(all.filter(e => e.recurringId).map(e => e.recurringId + "|" + (e.date || "").slice(0, 7)));
+    const cur = todayStr().slice(0, 7);
+    const [cy, cm] = cur.split("-").map(Number);
+    let created = 0;
+    for (const r of recs) {
+      const startYm = r.startYm || cur;
+      const startMonth = +startYm.split("-")[1];
+      let [y, m] = startYm.split("-").map(Number);
+      while (y < cy || (y === cy && m <= cm)) {
+        const ym = `${y}-${String(m).padStart(2, "0")}`;
+        const applies = r.interval === "yearly" ? (m === startMonth) : true;
+        if (applies && !have.has(r.id + "|" + ym)) {
+          const dim = new Date(y, m, 0).getDate();
+          const day = Math.min(r.day || 1, dim);
+          await addExpense({ amount: r.amount, category: r.category, note: r.note, recurringId: r.id, date: `${ym}-${String(day).padStart(2, "0")}` });
+          have.add(r.id + "|" + ym); created++;
+        }
+        m++; if (m > 12) { m = 1; y++; }
+      }
+    }
+    return created;
+  }
+
   return {
     state, init, reload,
     uid, todayStr, toDateStr, addToDate,
@@ -538,13 +600,16 @@ const Store = (() => {
     areaById, tasksForArea, myDayTasks, allOpenTasks, tasksOnDate, search,
     addArea, updateArea, deleteArea,
     addTask, updateTask, toggleTask, toggleSubtask, deleteTask, reorderTasks,
+    reorderGoals, reorderPlaces, reorderPurchases,
     addAttachment, getAttachments, deleteAttachment,
     archivedTasks, restoreTask,
+    trashedItems, restoreFromTrash, purgeTrashEntry, emptyTrash, TRASH_DAYS,
     addMedia, getMedia, delMedia,
     addGoal, updateGoal, deleteGoal, goalProgress,
     addPlace, updatePlace, deletePlace,
     addPurchase, updatePurchase, deletePurchase, purchaseCategoryById, setPurchaseCategories,
-    addExpense, updateExpense, deleteExpense, expensesForMonth, categoryById, setBudgetCategories
+    addExpense, updateExpense, deleteExpense, expensesForMonth, categoryById, setBudgetCategories,
+    getRecurring, setRecurring, ensureRecurringExpenses
   };
 })();
 

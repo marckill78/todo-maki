@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v26";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v27";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -178,15 +178,18 @@
   }
 
   /* ============ TASK-ZEILE ============ */
+  // Symbol + Farbe einer Aufgabe — fällt auf das Bereich-Icon zurück, wenn kein eigenes gesetzt ist
+  function chipFor(t) {
+    const area = Store.areaById(t.areaId);
+    const useArea = area && (!t.emoji || t.emoji === "📝");
+    return { emoji: useArea ? area.emoji : (t.emoji || "📝"), color: useArea ? area.color : (t.color || MAKI_COLORS[0]) };
+  }
   function taskRow(t) {
     const pct = Store.progress(t);
     const overdue = Store.isOverdue(t);
     const subCount = (t.subtasks || []).length;
     const area = Store.areaById(t.areaId);
-    // Symbol/Farbe vom Bereich übernehmen, wenn kein eigenes (oder noch das alte Default 📝)
-    const useArea = area && (!t.emoji || t.emoji === "📝");
-    const chipEmoji = useArea ? area.emoji : t.emoji;
-    const chipColor = useArea ? area.color : t.color;
+    const { emoji: chipEmoji, color: chipColor } = chipFor(t);
     return `
     <li class="task ${t.done ? "is-done" : ""} ${overdue ? "is-overdue" : ""}" data-id="${t.id}">
       ${canDrag() ? `<span class="drag-handle" title="Ziehen zum Sortieren">⠿</span>` : ""}
@@ -269,7 +272,7 @@
       if (tasks.length) html += controlsBar();
       html += listSection("Überfällig", applySort(applyFilters(overdue)));
       html += listSection(overdue.length ? "Heute" : "", applySort(applyFilters(rest)), { alwaysShow: tasks.length && !overdue.length });
-      if (mdSubs.length) html += `<div class="list-block">${overdue.length || rest.length ? "" : ""}<ul class="task-list">${mdSubs.map(({ t, s }) => mdSubtaskRow(t, s)).join("")}</ul></div>`;
+      if (mdSubs.length) html += `<div class="list-block"><ul class="task-list">${mdSubs.map(({ t, s }) => mdSubtaskRow(t, s)).join("")}</ul></div>`;
       if (!hideDone()) html += listSection("Erledigt", done);
       if (mdGoals.length) html += `<div class="list-block"><h3 class="block-title">🎯 Ziele <span class="block-n">${mdGoals.length}</span></h3><div class="card-grid">${mdGoals.map(goalCard).join("")}</div></div>`;
       if (mdPlaces.length) html += `<div class="list-block"><h3 class="block-title">📍 Orte <span class="block-n">${mdPlaces.length}</span></h3><div class="card-grid">${mdPlaces.map(placeCard).join("")}</div></div>`;
@@ -326,14 +329,36 @@
     Store.archivedTasks().then(tasks => {
       const el = $("#archive-list");
       if (!tasks.length) { el.outerHTML = emptyState("Archiv leer", "Erledigte Aufgaben landen hier nach Tagesabschluss."); return; }
-      el.outerHTML = `<ul class="task-list archive">${tasks.map(t => `
+      el.outerHTML = `<ul class="task-list archive">${tasks.map(t => { const ch = chipFor(t); return `
         <li class="task is-done" data-id="${t.id}">
-          <span class="task-chip" style="--chip:${t.color}">${t.emoji}</span>
+          <span class="task-chip" style="--chip:${ch.color}">${ch.emoji}</span>
           <div class="task-body"><span class="task-title">${esc(t.title)}</span>
             <div class="task-meta"><span class="meta">${new Date(t.archivedAt).toLocaleDateString("de-DE")}</span></div>
           </div>
           <button class="link-btn" data-act="restore" data-id="${t.id}">Wiederherstellen</button>
-        </li>`).join("")}</ul>`;
+        </li>`; }).join("")}</ul>`;
+    });
+  }
+
+  /* ---------- Papierkorb ---------- */
+  function viewTrash() {
+    content.innerHTML = renderHeaderTitle("🗑️ Papierkorb", `Gelöschtes wird nach ${Store.TRASH_DAYS} Tagen endgültig entfernt.`) + `<div id="trash-list" class="muted">Lade…</div>`;
+    Store.trashedItems().then(items => {
+      const el = $("#trash-list"); if (!el) return;
+      if (!items.length) { el.outerHTML = emptyState("Papierkorb leer", "Gelöschte Einträge landen hier."); return; }
+      const TL = { tasks: "📋 Aufgabe", goals: "🎯 Ziel", places: "📍 Ort", purchases: "🛒 Anschaffung", expenses: "💶 Ausgabe" };
+      el.outerHTML = `<button class="link-btn danger" id="trash-empty" style="margin-bottom:14px">Papierkorb leeren</button>
+        <ul class="task-list">${items.map(it => `
+          <li class="task" data-trash="${it.id}">
+            <div class="task-body" style="cursor:default"><span class="task-title">${esc(it.title)}</span>
+              <div class="task-meta"><span class="meta">${TL[it.type] || it.type}</span><span class="meta">gelöscht ${new Date(it.deletedAt).toLocaleDateString("de-DE")}</span></div>
+            </div>
+            <button class="link-btn" data-trash-restore="${it.id}">Wiederherstellen</button>
+            <button class="icon-btn sm" data-trash-del="${it.id}" title="Endgültig löschen">✕</button>
+          </li>`).join("")}</ul>`;
+      $("#trash-empty").onclick = async () => { if (confirm("Papierkorb endgültig leeren? Das kann nicht rückgängig gemacht werden.")) { await Store.emptyTrash(); render(); } };
+      $$("[data-trash-restore]").forEach(b => b.onclick = async () => { await Store.restoreFromTrash(b.dataset.trashRestore); render(); toast("Wiederhergestellt"); });
+      $$("[data-trash-del]").forEach(b => b.onclick = async () => { await Store.purgeTrashEntry(b.dataset.trashDel); render(); });
     });
   }
 
@@ -402,7 +427,7 @@
     for (let d = 1; d <= daysInMonth; d++) {
       const ds = Store.toDateStr(new Date(y, m, d));
       const tasks = Store.tasksOnDate(ds);
-      const dots = tasks.slice(0, 4).map(t => `<span class="cal-dot ${Store.isOverdue(t) ? "od" : ""}" style="--chip:${t.color}"></span>`).join("");
+      const dots = tasks.slice(0, 4).map(t => `<span class="cal-dot ${Store.isOverdue(t) ? "od" : ""}" style="--chip:${chipFor(t).color}"></span>`).join("");
       cells += `<div class="cal-cell ${ds === today ? "today" : ""}" data-date="${ds}">
         <span class="cal-num">${d}</span>
         <div class="cal-dots">${dots}${tasks.length > 4 ? `<span class="cal-more">+${tasks.length - 4}</span>` : ""}</div>
@@ -422,7 +447,7 @@
       const ds = Store.toDateStr(day);
       const tasks = Store.tasksOnDate(ds);
       const items = tasks.map(t =>
-        `<div class="cw-task ${t.done?"done":""} ${Store.isOverdue(t)?"od":""}" style="--chip:${t.color}" data-id="${t.id}">${prioBadge(t.priority)} ${esc(t.title)}</div>`).join("")
+        `<div class="cw-task ${t.done?"done":""} ${Store.isOverdue(t)?"od":""}" style="--chip:${chipFor(t).color}" data-id="${t.id}">${prioBadge(t.priority)} ${esc(t.title)}</div>`).join("")
         || `<div class="muted" style="font-size:12px">–</div>`;
       cols += `<div class="cal-week-col ${ds===today?"today":""}">
         <div class="cal-week-head" data-date="${ds}"><span class="wd">${wd[i]}</span><span class="dn">${day.getDate()}</span></div>
@@ -562,13 +587,16 @@
     }
     content.innerHTML = html;
     $("#add-goal").onclick = () => openGoalPanel(null);
-    $$("#content .goal-card").forEach(c => c.onclick = () => openGoalPanel(c.dataset.id));
+    $$("#content .goal-card").forEach(c => c.onclick = (e) => { if (!e.target.closest(".card-drag")) openGoalPanel(c.dataset.id); });
+    const gGrid = $("#content .card-grid");
+    if (gGrid) makeSortable(gGrid, ".card-drag", ".goal-card", "id", (ids) => Store.reorderGoals(ids).then(render));
     loadMediaImages();
   }
   function goalCard(g) {
     const pct = Store.goalProgress(g);
     const steps = (g.steps || []).length;
     return `<div class="goal-card ${g.achieved ? "achieved" : ""}" data-id="${g.id}">
+      <span class="card-drag" title="Ziehen zum Sortieren">⠿</span>
       ${g.mediaId ? `<div class="card-img"><img data-media="${g.mediaId}" alt=""></div>`
         : g.imageUrl ? `<div class="card-img"><img src="${esc(g.imageUrl)}" alt="" loading="lazy"></div>`
         : `<div class="card-img placeholder">🎯</div>`}
@@ -729,7 +757,7 @@
     aktivitaet: { label: "Aktivität", icon: "🎟️" }
   };
   let placesFilter = { type: "all", status: "all" };
-  let placesSort = "recent"; // recent | rating | name | near
+  let placesSort = "manual"; // manual | recent | rating | name | near
   let userPos = null;        // {lat,lng} für „In der Nähe"
 
   function haversineKm(a, b) {
@@ -771,10 +799,11 @@
     if (placesSort === "rating") list.sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.createdAt||0) - (a.createdAt||0));
     else if (placesSort === "name") list.sort((a, b) => a.name.localeCompare(b.name, "de"));
     else if (placesSort === "near") list.sort((a, b) => placeDist(a) - placeDist(b));
-    else list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    else if (placesSort === "recent") list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    else list.sort((a, b) => (a.order || 0) - (b.order || 0)); // manual
 
     const tab = (val, label) => `<button class="seg ${placesFilter.type === val ? "sel" : ""}" data-ptype="${val}">${label}</button>`;
-    const sortOpts = { recent: "Zuletzt", rating: "Bewertung", name: "Name", near: "📍 In der Nähe" };
+    const sortOpts = { manual: "Manuell ↕", recent: "Zuletzt", rating: "Bewertung", name: "Name", near: "📍 In der Nähe" };
     let html = `<div class="view-head">
         <h2>📍 Orte</h2>
         <button class="btn-primary" id="add-place">＋ Neuer Ort</button>
@@ -803,9 +832,13 @@
     };
     $$("[data-ptype]").forEach(b => b.onclick = () => { placesFilter.type = b.dataset.ptype; render(); });
     $$("#content .place-card").forEach(c => c.onclick = (e) => {
-      if (e.target.closest("[data-pact]")) return; // Aktions-Links nicht als Öffnen werten
+      if (e.target.closest("[data-pact]") || e.target.closest(".card-drag")) return; // Aktionen/Griff nicht als Öffnen werten
       openPlacePanel(c.dataset.id);
     });
+    if (placesSort === "manual") {
+      const grid = $("#content .card-grid");
+      if (grid) makeSortable(grid, ".card-drag", ".place-card", "id", (ids) => Store.reorderPlaces(ids).then(render));
+    }
     loadMediaImages();
   }
   function stars(n) { return "★★★★★".slice(0, n) + "☆☆☆☆☆".slice(0, 5 - n); }
@@ -813,6 +846,7 @@
   function placeCard(p) {
     const t = PLACE_TYPES[p.type] || {};
     return `<div class="place-card" data-id="${p.id}">
+      ${placesSort === "manual" ? `<span class="card-drag" title="Ziehen zum Sortieren">⠿</span>` : ""}
       ${p.mediaId ? `<div class="card-img"><img data-media="${p.mediaId}" alt=""></div>`
         : p.imageUrl ? `<div class="card-img"><img src="${esc(p.imageUrl)}" alt="" loading="lazy"></div>`
         : `<div class="card-img placeholder">${t.icon || "📍"}</div>`}
@@ -959,7 +993,7 @@
      MODUL: ANSCHAFFUNGEN
      ============================================================ */
   let purchasesFilter = { category: "all", status: "all" };
-  let purchasesSort = "recent"; // recent | priority | price | name
+  let purchasesSort = "manual"; // manual | recent | priority | price | name
 
   function viewPurchases() {
     let list = [...Store.state.purchases];
@@ -968,12 +1002,13 @@
     if (purchasesSort === "price") list.sort((a, b) => (b.price || 0) - (a.price || 0));
     else if (purchasesSort === "priority") list.sort((a, b) => (b.priority || 0) - (a.priority || 0) || (b.createdAt || 0) - (a.createdAt || 0));
     else if (purchasesSort === "name") list.sort((a, b) => a.name.localeCompare(b.name, "de"));
-    else list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    else if (purchasesSort === "recent") list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    else list.sort((a, b) => (a.order || 0) - (b.order || 0)); // manual
 
     const cats = Store.state.purchaseCategories;
     const totalWant = Store.state.purchases.filter(p => p.status === "want").reduce((s, p) => s + (p.price || 0), 0);
     const tab = (val, label) => `<button class="seg ${purchasesFilter.category === val ? "sel" : ""}" data-pcat="${val}">${label}</button>`;
-    const sortOpts = { recent: "Zuletzt", priority: "Priorität", price: "Preis", name: "Name" };
+    const sortOpts = { manual: "Manuell ↕", recent: "Zuletzt", priority: "Priorität", price: "Preis", name: "Name" };
     let html = `<div class="view-head">
         <h2>🛒 Anschaffungen</h2>
         <div class="cal-nav">
@@ -1001,7 +1036,11 @@
     $("#pur-status").onchange = (e) => { purchasesFilter.status = e.target.value; render(); };
     $("#pur-sort").onchange = (e) => { purchasesSort = e.target.value; render(); };
     $$("[data-pcat]").forEach(b => b.onclick = () => { purchasesFilter.category = b.dataset.pcat; render(); });
-    $$("#content .purchase-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]")) openPurchasePanel(c.dataset.id); });
+    $$("#content .purchase-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]") && !e.target.closest(".card-drag")) openPurchasePanel(c.dataset.id); });
+    if (purchasesSort === "manual") {
+      const grid = $("#content .card-grid");
+      if (grid) makeSortable(grid, ".card-drag", ".purchase-card", "id", (ids) => Store.reorderPurchases(ids).then(render));
+    }
     loadMediaImages();
   }
 
@@ -1009,6 +1048,7 @@
     const cat = Store.purchaseCategoryById(p.category) || { icon: "📦", name: p.category, color: "#888" };
     const bought = p.status === "bought";
     return `<div class="purchase-card ${bought ? "bought" : ""}" data-id="${p.id}">
+      ${purchasesSort === "manual" ? `<span class="card-drag" title="Ziehen zum Sortieren">⠿</span>` : ""}
       ${p.mediaId ? `<div class="card-img"><img data-media="${p.mediaId}" alt=""></div>`
         : p.imageUrl ? `<div class="card-img"><img src="${esc(p.imageUrl)}" alt="" loading="lazy"></div>`
         : `<div class="card-img placeholder">${cat.icon}</div>`}
@@ -1076,8 +1116,24 @@
     bindVal('[data-pu="name"]', "name", v => v.trim() || "Neue Anschaffung");
     bindVal('[data-pu="category"]', "category");
     bindVal('[data-pu="price"]', "price", v => +v || 0);
-    bindVal('[data-pu="status"]', "status");
     bindVal('[data-pu="url"]', "url");
+    // Status: beim Wechsel auf „gekauft" optional als Budget-Ausgabe eintragen
+    panel.querySelector('[data-pu="status"]').onchange = async (e) => {
+      await save({ status: e.target.value });
+      if (e.target.value !== "bought") { render(); return; }
+      const cp = Store.state.purchases.find(x => x.id === pid);
+      if (cp && cp.price > 0 && !cp.expenseId &&
+          confirm(`„${cp.name}“ (${fmtEur(cp.price)}) als Budget-Ausgabe eintragen?`)) {
+        const pcName = (Store.purchaseCategoryById(cp.category) || {}).name || "";
+        const bc = Store.state.budgetCategories.find(c => c.name.toLowerCase() === pcName.toLowerCase())
+          || Store.state.budgetCategories.find(c => c.id === "sonstiges")
+          || Store.state.budgetCategories[0];
+        const ex = await Store.addExpense({ amount: cp.price, category: bc.id, note: cp.name, date: cp.boughtAt || Store.todayStr() });
+        await Store.updatePurchase(pid, { expenseId: ex.id });
+        toast("Als Budget-Ausgabe eingetragen");
+      }
+      render();
+    };
     bindVal('[data-pu="notes"]', "notes");
     bindPrioPicker(panel, (pr) => save({ priority: pr }));
     panel.querySelector("[data-pu-myday]").onchange = async (e) => { await save({ myDay: e.target.checked }); render(); };
@@ -1154,6 +1210,7 @@
           <button class="icon-btn" data-bm="prev">‹</button>
           <button class="link-btn" data-bm="today">Heute</button>
           <button class="icon-btn" data-bm="next">›</button>
+          <button class="btn-soft" id="edit-recurring">🔁 Abos</button>
           <button class="btn-soft" id="edit-cats">⚙ Kategorien</button>
           <button class="btn-primary" id="add-expense">＋ Ausgabe</button>
         </div>
@@ -1168,6 +1225,7 @@
     });
     $("#add-expense").onclick = () => openExpenseModal(null);
     $("#edit-cats").onclick = () => openCategoryEditor();
+    $("#edit-recurring").onclick = () => openRecurringEditor();
 
     const expenses = await Store.expensesForMonth(ym);
     const cats = Store.state.budgetCategories;
@@ -1271,6 +1329,47 @@
     if (del) del.onclick = async () => { await Store.deleteExpense(ex.id); hideModal(); viewBudget(); };
   }
 
+  async function openRecurringEditor() {
+    const recs = await Store.getRecurring();
+    const catOpts = (sel) => Store.state.budgetCategories.map(c => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${c.icon} ${esc(c.name)}</option>`).join("");
+    const rowHtml = (r) => `<div class="rec-row" data-rec-row data-id="${r.id || ""}">
+        <input class="rec-amount" type="number" step="0.01" min="0" data-r="amount" value="${r.amount || ""}" placeholder="€">
+        <select data-r="category">${catOpts(r.category)}</select>
+        <input class="rec-note" data-r="note" value="${esc(r.note || "")}" placeholder="z.B. Netflix">
+        <select data-r="interval"><option value="monthly" ${r.interval !== "yearly" ? "selected" : ""}>monatl.</option><option value="yearly" ${r.interval === "yearly" ? "selected" : ""}>jährl.</option></select>
+        <input class="rec-day" type="number" min="1" max="28" data-r="day" value="${r.day || 1}" title="Tag im Monat">
+        <button class="icon-btn sm" data-rec-del title="Löschen">✕</button></div>`;
+    modal.innerHTML = `
+      <h3 class="modal-title">🔁 Wiederkehrende Ausgaben</h3>
+      <p class="muted small">Werden automatisch jeden Monat (bzw. jährlich) als Ausgabe eingetragen — ab dem Anlegen.</p>
+      <div class="rec-editor" data-recs>${recs.map(rowHtml).join("")}</div>
+      <button class="btn-soft" id="rec-add">＋ Abo</button>
+      <div class="modal-actions"><span></span>
+        <div><button class="btn-soft" data-x="cancel">Abbrechen</button><button class="btn-primary" data-x="save">Speichern</button></div>
+      </div>`;
+    showModal();
+    const list = modal.querySelector("[data-recs]");
+    modal.querySelector("#rec-add").onclick = () => list.insertAdjacentHTML("beforeend", rowHtml({ id: "", interval: "monthly", day: 1, category: Store.state.budgetCategories[0]?.id }));
+    list.onclick = (e) => { const b = e.target.closest("[data-rec-del]"); if (b) b.closest("[data-rec-row]").remove(); };
+    modal.querySelector('[data-x="cancel"]').onclick = hideModal;
+    modal.querySelector('[data-x="save"]').onclick = async () => {
+      const cur = Store.todayStr().slice(0, 7);
+      const old = await Store.getRecurring();
+      const recs2 = [...list.querySelectorAll("[data-rec-row]")].map(row => {
+        const get = (k) => row.querySelector(`[data-r="${k}"]`).value;
+        const amount = +get("amount"); if (!(amount > 0)) return null;
+        const id = row.dataset.id || Store.uid();
+        const prev = old.find(x => x.id === id);
+        return { id, amount, category: get("category"), note: get("note").trim(),
+          interval: get("interval"), day: Math.min(28, Math.max(1, +get("day") || 1)),
+          startYm: prev ? prev.startYm : cur };
+      }).filter(Boolean);
+      await Store.setRecurring(recs2);
+      const n = await Store.ensureRecurringExpenses();
+      hideModal(); viewBudget(); if (n) toast(`${n} Abo-Ausgabe${n > 1 ? "n" : ""} eingetragen`);
+    };
+  }
+
   function openCategoryEditor(type = "budget") {
     const isBudget = type === "budget";
     const current = isBudget ? Store.state.budgetCategories : Store.state.purchaseCategories;
@@ -1322,12 +1421,26 @@
   /* ============ ROUTER ============ */
   function render() {
     renderSidebar();
+    updateAddButton();
     const q = $("#search").value.trim();
     if (q) return renderSearch(q);
     ({ myday: viewMyDay, all: viewAll, area: viewArea,
        calendar: viewCalendar, archive: viewArchive, notes: viewNotes,
        goals: viewGoals, places: viewPlaces, budget: viewBudget, stats: viewStats,
-       purchases: viewPurchases }[view.name] || viewMyDay)();
+       purchases: viewPurchases, trash: viewTrash }[view.name] || viewMyDay)();
+  }
+  // Topbar-„＋"-Button passt sich der Ansicht an (Aufgabe / Ort / Ziel / Anschaffung)
+  function updateAddButton() {
+    const b = $("#quick-add-btn"); if (!b) return;
+    const labels = { places: "＋ Neuer Ort", goals: "＋ Neues Ziel", purchases: "＋ Anschaffung" };
+    b.textContent = labels[view.name] || "＋ Neue Aufgabe";
+    b.style.display = ["stats", "archive", "notes", "calendar", "budget"].includes(view.name) ? "none" : "";
+  }
+  function quickAddDispatch() {
+    if (view.name === "places") return openPlacePanel(null);
+    if (view.name === "goals") return openGoalPanel(null);
+    if (view.name === "purchases") return openPurchasePanel(null);
+    return openQuickAdd();
   }
   function renderSearch(q) {
     const ql = q.toLowerCase();
@@ -1349,6 +1462,23 @@
     $$("#content .place-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]")) openPlacePanel(c.dataset.id); });
     $$("#content .purchase-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]")) openPurchasePanel(c.dataset.id); });
     loadMediaImages();
+
+    // Budget-Ausgaben (async nachgeladen, da nicht im State)
+    DB.getAll("expenses").then(all => {
+      if ($("#content h2")?.textContent !== `🔍 Suche: „${q}“`) return; // Ansicht gewechselt
+      const ex = all.filter(e => hit(e.note, e.subcategory, (Store.categoryById(e.category) || {}).name))
+        .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      if (!ex.length) return;
+      const sub = $("#content .view-sub"); if (sub) sub.textContent = `${total + ex.length} Treffer`;
+      content.insertAdjacentHTML("beforeend", `<div class="list-block"><h3 class="block-title">💶 Budget <span class="block-n">${ex.length}</span></h3>
+        <ul class="expense-list">${ex.map(e => { const c = Store.categoryById(e.category) || { icon: "📦", name: e.category, color: "#888" };
+          return `<li class="expense-row" data-exid="${e.id}">
+            <span class="exp-cat" style="--chip:${c.color}">${c.icon}</span>
+            <div class="exp-mid"><span class="exp-note">${esc(e.note || c.name)}</span>
+              <span class="exp-meta muted">${esc(c.name)}${e.subcategory ? " › " + esc(e.subcategory) : ""} · ${new Date(e.date + "T00:00:00").toLocaleDateString("de-DE")}</span></div>
+            <span class="exp-amount">${fmtEur(e.amount)}</span></li>`; }).join("")}</ul></div>`);
+      $$("#content .expense-row[data-exid]").forEach(r => r.onclick = () => { view = { name: "budget" }; openExpenseModal(r.dataset.exid); });
+    });
   }
 
   /* ============ TASK-DETAIL-PANEL ============ */
@@ -1447,6 +1577,7 @@
       <button class="check sm" data-sub-toggle><span class="check-box">${s.done ? "✓" : ""}</span></button>
       <span class="sub-title" data-sub-edit contenteditable="true" spellcheck="false">${esc(s.title)}</span>
       ${showMyDay ? `<button class="icon-btn sm sub-md ${s.myDay ? "on" : ""}" data-sub-md title="Zu „Mein Tag“">☀️</button>` : ""}
+      ${showMyDay ? `<button class="icon-btn sm" data-sub-convert title="In eigene Aufgabe umwandeln">↗</button>` : ""}
       <button class="icon-btn sm" data-sub-del>✕</button></li>`;
   }
   // Bearbeitete Unteraufgabe speichern (Enter beendet, Klick woandershin auch)
@@ -1552,6 +1683,13 @@
         s.myDay = !s.myDay;
         await Store.updateTask(t.id, { subtasks: t.subtasks }); refreshSubs(t); render();
       }
+      if (e.target.closest("[data-sub-convert]")) {
+        const s = t.subtasks.find(s => s.id === sid); if (!s) return;
+        await Store.addTask({ title: s.title, areaId: t.areaId, myDay: !!s.myDay });
+        t.subtasks = t.subtasks.filter(x => x.id !== sid);
+        await Store.updateTask(t.id, { subtasks: t.subtasks });
+        refreshSubs(t); render(); toast("In eigene Aufgabe umgewandelt");
+      }
     };
     // Unteraufgaben per Drag sortieren
     makeSortable(subsEl, ".sub-drag", "[data-sub]", "sub", async (ids) => {
@@ -1620,8 +1758,9 @@
 
   /* ============ QUICK ADD ============ */
   function openQuickAdd() {
+    const presetArea = view.name === "area" ? view.areaId : defaultArea();
     const areaOpts = Store.state.areas.map(a =>
-      `<option value="${a.id}" ${view.name === "area" && a.id === view.areaId ? "selected" : ""}>${esc(a.emoji + " " + a.name)}</option>`).join("");
+      `<option value="${a.id}" ${a.id === presetArea ? "selected" : ""}>${esc(a.emoji + " " + a.name)}</option>`).join("");
     modal.innerHTML = `
       <h3 class="modal-title">Neue Aufgabe</h3>
       <div class="input-mic">
@@ -1635,7 +1774,7 @@
         <label class="field"><span>Bereich</span><select id="qa-area">${areaOpts}</select></label>
         <label class="field"><span>Fällig</span><input type="date" id="qa-due"></label>
       </div>
-      <div class="field"><span>Priorität</span>${prioPicker(0)}</div>
+      <div class="field"><span>Priorität</span>${prioPicker(defaultPrio())}</div>
       <label class="toggle-field"><input type="checkbox" id="qa-myday" ${view.name === "myday" ? "checked" : ""}><span>☀️ Zu „Mein Tag“</span></label>
       <div class="modal-actions">
         <button class="btn-soft" data-m="cancel">Abbrechen</button>
@@ -1643,7 +1782,7 @@
       </div>`;
     showModal();
     const titleEl = $("#qa-title"); titleEl.focus();
-    let qaPrio = 0;
+    let qaPrio = defaultPrio();
     bindPrioPicker(modal, (p) => qaPrio = p);
     const save = async () => {
       const title = titleEl.value.trim(); if (!title) { titleEl.focus(); return; }
@@ -1713,6 +1852,41 @@
   }
 
   /* ============ EINSTELLUNGEN / BACKUP ============ */
+  /* ============ CSV-EXPORT ============ */
+  function toCSV(rows) {
+    return rows.map(r => r.map(cell => {
+      const s = String(cell ?? "");
+      return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(";")).join("\r\n");
+  }
+  function downloadFile(name, content, type = "text/csv;charset=utf-8") {
+    const blob = new Blob(["﻿" + content], { type });   // BOM → Umlaute in Excel korrekt
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  async function exportTasksCsv() {
+    const rows = [["Titel", "Bereich", "Priorität", "Fällig", "Status", "Tags", "Notizen"]];
+    const all = [...Store.state.tasks, ...(await Store.archivedTasks())];
+    for (const t of all) {
+      const area = Store.areaById(t.areaId);
+      rows.push([t.title, area ? area.name : "", t.priority || "", t.due || "",
+        t.archived ? "archiviert" : t.done ? "erledigt" : "offen", (t.tags || []).join(", "), t.notes || ""]);
+    }
+    downloadFile(`todo-maki-aufgaben_${Store.todayStr()}.csv`, toCSV(rows));
+    toast("Aufgaben als CSV exportiert");
+  }
+  async function exportBudgetCsv() {
+    const all = (await DB.getAll("expenses")).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    const rows = [["Datum", "Kategorie", "Unterkategorie", "Betrag", "Notiz"]];
+    for (const e of all) {
+      const c = Store.categoryById(e.category) || { name: e.category };
+      rows.push([e.date || "", c.name, e.subcategory || "", String(e.amount).replace(".", ","), e.note || ""]);
+    }
+    downloadFile(`todo-maki-budget_${Store.todayStr()}.csv`, toCSV(rows));
+    toast("Budget als CSV exportiert");
+  }
+
   function accountBlock() {
     if (!window.Sync || !Sync.isReady()) {
       return `<div class="settings-block" data-account><h4>Konto & Sync</h4>
@@ -1777,6 +1951,12 @@
                 .map(([v,l]) => `<option value="${v}" ${startViewPref()===v?"selected":""}>${l}</option>`).join("")}
             </select></label>
         </div>
+        <div class="field-row">
+          <label class="field"><span>Standard-Priorität</span>
+            <select data-s="default-prio">${[0,1,2,3,4,5].map(p => `<option value="${p}" ${defaultPrio()===p?"selected":""}>${p?("P"+p):"Keine"}</option>`).join("")}</select></label>
+          <label class="field"><span>Standard-Bereich</span>
+            <select data-s="default-area"><option value="" ${!defaultArea()?"selected":""}>— keiner —</option>${Store.state.areas.map(a => `<option value="${a.id}" ${defaultArea()===a.id?"selected":""}>${esc(a.emoji+" "+a.name)}</option>`).join("")}</select></label>
+        </div>
         <label class="toggle-field"><input type="checkbox" data-s="hide-done" ${hideDone()?"checked":""}><span>Erledigte Aufgaben ausblenden</span></label>
       </div>
       <div class="settings-block">
@@ -1799,6 +1979,10 @@
           </label>
         </div>
         <p class="muted small">Aktuell: ${counts.areas} Bereiche · ${counts.tasks} aktive Aufgaben</p>
+        <div class="settings-actions">
+          <button class="btn-soft sm" data-s="csv-tasks">📄 Aufgaben als CSV</button>
+          <button class="btn-soft sm" data-s="csv-budget">📄 Budget als CSV</button>
+        </div>
         <button class="link-btn danger" data-s="reset" style="align-self:flex-start">Alle Daten zurücksetzen…</button>
       </div>
       <div class="modal-actions"><span class="muted small">Version ${APP_VERSION}</span>
@@ -1829,6 +2013,8 @@
     // Allgemein
     modal.querySelector('[data-s="week-start"]').onchange = (e) => { localStorage.setItem("maki-week-start", e.target.value); };
     modal.querySelector('[data-s="start-view"]').onchange = (e) => { localStorage.setItem("maki-start-view", e.target.value); };
+    modal.querySelector('[data-s="default-prio"]').onchange = (e) => { localStorage.setItem("maki-default-prio", e.target.value); };
+    modal.querySelector('[data-s="default-area"]').onchange = (e) => { localStorage.setItem("maki-default-area", e.target.value); };
     modal.querySelector('[data-s="hide-done"]').onchange = (e) => { localStorage.setItem("maki-hide-done", e.target.checked ? "1" : "0"); render(); };
 
     modal.querySelector('[data-s="reminders"]').onchange = async (e) => {
@@ -1842,6 +2028,8 @@
     };
 
     // Alle Daten zurücksetzen
+    modal.querySelector('[data-s="csv-tasks"]').onclick = () => exportTasksCsv();
+    modal.querySelector('[data-s="csv-budget"]').onclick = () => exportBudgetCsv();
     modal.querySelector('[data-s="reset"]').onclick = async () => {
       if (!confirm("Wirklich ALLE Daten löschen? Aufgaben, Bereiche, Ziele, Orte und Budget werden unwiderruflich entfernt. (Tipp: vorher ein Backup exportieren.)")) return;
       for (const s of ["areas", "tasks", "attachments", "goals", "places", "expenses", "media", "meta"]) await DB.clear(s);
@@ -1924,6 +2112,8 @@
   const hideDone = () => localStorage.getItem("maki-hide-done") === "1";
   const reminderTime = () => localStorage.getItem("maki-reminder-time") || "";
   const startViewPref = () => localStorage.getItem("maki-start-view") || "myday";
+  const defaultPrio = () => +(localStorage.getItem("maki-default-prio") || "0");
+  const defaultArea = () => localStorage.getItem("maki-default-area") || "";
 
   /* ============ ERINNERUNGEN / NOTIFICATIONS ============ */
   const remindersOn = () => localStorage.getItem("maki-reminders") === "on";
@@ -2017,10 +2207,10 @@
       if (e.target.closest('[data-act="restore"]')) {
         await Store.restoreTask(e.target.dataset.id); render(); toast("Wiederhergestellt"); return;
       }
-      if (e.target.closest('[data-act="open"]') || e.target.closest(".task-body")) openPanel(id);
+      if (id && (e.target.closest('[data-act="open"]') || e.target.closest(".task-body"))) openPanel(id);
     });
 
-    $("#quick-add-btn").onclick = openQuickAdd;
+    $("#quick-add-btn").onclick = quickAddDispatch;
     $("#search").addEventListener("input", () => render());
 
     // Sortier-/Filter-Steuerung (Delegation, da pro Render neu gerendert)

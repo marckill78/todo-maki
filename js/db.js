@@ -16,7 +16,7 @@
 
 const DB = (() => {
   const DB_NAME = "todo-maki";
-  const DB_VERSION = 3;
+  const DB_VERSION = 4;
   let _db = null;
   // Diese Stores werden (bei aktivem Login) mit der Cloud synchronisiert
   const SYNC_STORES = new Set(["areas", "tasks", "goals", "places", "expenses", "purchases"]);
@@ -59,6 +59,9 @@ const DB = (() => {
         }
         if (!db.objectStoreNames.contains("purchases")) {
           db.createObjectStore("purchases", { keyPath: "id" }).createIndex("order", "order");
+        }
+        if (!db.objectStoreNames.contains("trash")) {
+          db.createObjectStore("trash", { keyPath: "id" }).createIndex("deletedAt", "deletedAt");
         }
       };
       req.onsuccess = (e) => { _db = e.target.result; resolve(_db); };
