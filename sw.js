@@ -3,10 +3,10 @@
 // Eigener Cache-Namensraum für die Dev-Umgebung, damit Prod (1.0) und Dev sich
 // auf derselben github.io-Origin nicht den App-Shell-Cache teilen.
 const IS_DEV = self.location.pathname.includes("todo-maki-dev");
-const CACHE = (IS_DEV ? "maki-dev-" : "maki-") + "v32";
+const CACHE = (IS_DEV ? "maki-dev-" : "maki-") + "v33";
 const ASSETS = [
-  "./", "./index.html", "./styles.css?v=32",
-  "./js/icons.js?v=32", "./js/db.js?v=32", "./js/sync.js?v=32", "./js/store.js?v=32", "./js/app.js?v=32",
+  "./", "./index.html", "./styles.css?v=33",
+  "./js/icons.js?v=33", "./js/db.js?v=33", "./js/sync.js?v=33", "./js/store.js?v=33", "./js/app.js?v=33",
   "./manifest.webmanifest",
   "./assets/icon-192.png", "./assets/icon-512.png", "./assets/icon-maskable.png"
 ];

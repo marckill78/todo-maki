@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v32";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v33";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -2382,9 +2382,14 @@
   function markDevEnv() {
     if (!location.pathname.includes("todo-maki-dev")) return;
     document.title = "Maki DEV";
+    // Badge in der Sidebar-Marke …
     const brand = document.querySelector(".brand-name");
-    if (brand && !document.querySelector(".dev-flag"))
+    if (brand && !brand.parentElement.querySelector(".dev-flag"))
       brand.insertAdjacentHTML("afterend", `<span class="dev-flag">DEV</span>`);
+    // … und in der Topbar (auf dem Handy immer sichtbar, Sidebar dort eingeklappt)
+    const toggle = document.querySelector(".menu-toggle");
+    if (toggle && !toggle.parentElement.querySelector(".dev-flag"))
+      toggle.insertAdjacentHTML("afterend", `<span class="dev-flag topbar-dev">DEV</span>`);
   }
 
   async function start() {
