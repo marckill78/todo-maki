@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v27";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v28";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -1268,16 +1268,43 @@
         </div>
       </div>
       <h3 class="block-title" style="margin-top:8px">Ausgaben <span class="block-n">${expenses.length}</span></h3>
-      <ul class="expense-list">
-        ${expenses.map(e => { const c = Store.categoryById(e.category) || { icon: "📦", name: e.category, color: "#888" };
-          return `<li class="expense-row" data-id="${e.id}">
-            <span class="exp-cat" style="--chip:${c.color}">${c.icon}</span>
-            <div class="exp-mid"><span class="exp-note">${esc(e.note || c.name)}</span>
-              <span class="exp-meta muted">${esc(c.name)}${e.subcategory ? " › " + esc(e.subcategory) : ""} · ${new Date(e.date+"T00:00:00").toLocaleDateString("de-DE")}</span></div>
-            <span class="exp-amount">${fmtEur(e.amount)}</span>
-          </li>`; }).join("")}
-      </ul></div>`;
+      ${budgetGroupsHtml(expenses)}</div>`;
     $$("#content .expense-row").forEach(r => r.onclick = () => openExpenseModal(r.dataset.id));
+    $$("#content [data-bgt-group]").forEach(h => h.onclick = () => {
+      const id = h.dataset.bgtGroup;
+      budgetCollapsed.has(id) ? budgetCollapsed.delete(id) : budgetCollapsed.add(id);
+      localStorage.setItem("maki-budget-collapsed", JSON.stringify([...budgetCollapsed]));
+      viewBudget();
+    });
+  }
+  // Klappbare Ausgaben-Gruppen nach Kategorie
+  const budgetCollapsed = new Set(JSON.parse(localStorage.getItem("maki-budget-collapsed") || "[]"));
+  function expenseRow(e) {
+    const c = Store.categoryById(e.category) || { icon: "📦", name: e.category, color: "#888" };
+    return `<li class="expense-row" data-id="${e.id}">
+      <span class="exp-cat" style="--chip:${c.color}">${c.icon}</span>
+      <div class="exp-mid"><span class="exp-note">${esc(e.note || c.name)}</span>
+        <span class="exp-meta muted">${e.subcategory ? esc(e.subcategory) + " · " : ""}${new Date(e.date + "T00:00:00").toLocaleDateString("de-DE")}</span></div>
+      <span class="exp-amount">${fmtEur(e.amount)}</span></li>`;
+  }
+  function budgetGroupsHtml(expenses) {
+    const groups = {};
+    expenses.forEach(e => (groups[e.category] = groups[e.category] || []).push(e));
+    const sum = (arr) => arr.reduce((s, e) => s + e.amount, 0);
+    return Object.entries(groups).sort((a, b) => sum(b[1]) - sum(a[1])).map(([catId, exs]) => {
+      const c = Store.categoryById(catId) || { icon: "📦", name: catId, color: "#888" };
+      const open = !budgetCollapsed.has(catId);
+      return `<div class="bgt-group">
+        <button class="bgt-group-head" data-bgt-group="${catId}">
+          <span class="chev">${open ? "▾" : "▸"}</span>
+          <span class="exp-cat" style="--chip:${c.color}">${c.icon}</span>
+          <span class="bgt-group-name">${esc(c.name)}</span>
+          <span class="bgt-group-n">${exs.length}</span>
+          <span class="bgt-group-sum">${fmtEur(sum(exs))}</span>
+        </button>
+        ${open ? `<ul class="expense-list">${exs.map(expenseRow).join("")}</ul>` : ""}
+      </div>`;
+    }).join("");
   }
   function fmtEur(n) { return n.toLocaleString("de-DE", { style: "currency", currency: "EUR" }); }
   function donutSvg(catData, total) {
@@ -1331,14 +1358,17 @@
 
   async function openRecurringEditor() {
     const recs = await Store.getRecurring();
+    const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
     const catOpts = (sel) => Store.state.budgetCategories.map(c => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${c.icon} ${esc(c.name)}</option>`).join("");
-    const rowHtml = (r) => `<div class="rec-row" data-rec-row data-id="${r.id || ""}">
+    const rowHtml = (r) => { const yearly = r.interval === "yearly"; const curM = r.month || (r.startYm ? +r.startYm.split("-")[1] : new Date().getMonth() + 1);
+      return `<div class="rec-row" data-rec-row data-id="${r.id || ""}">
         <input class="rec-amount" type="number" step="0.01" min="0" data-r="amount" value="${r.amount || ""}" placeholder="€">
         <select data-r="category">${catOpts(r.category)}</select>
         <input class="rec-note" data-r="note" value="${esc(r.note || "")}" placeholder="z.B. Netflix">
-        <select data-r="interval"><option value="monthly" ${r.interval !== "yearly" ? "selected" : ""}>monatl.</option><option value="yearly" ${r.interval === "yearly" ? "selected" : ""}>jährl.</option></select>
+        <select data-r="interval"><option value="monthly" ${!yearly ? "selected" : ""}>monatl.</option><option value="yearly" ${yearly ? "selected" : ""}>jährl.</option></select>
+        <select class="rec-month" data-r="month" ${yearly ? "" : "hidden"} title="Monat (jährlich)">${MONTHS.map((mn, i) => `<option value="${i + 1}" ${curM === i + 1 ? "selected" : ""}>${mn}</option>`).join("")}</select>
         <input class="rec-day" type="number" min="1" max="28" data-r="day" value="${r.day || 1}" title="Tag im Monat">
-        <button class="icon-btn sm" data-rec-del title="Löschen">✕</button></div>`;
+        <button class="icon-btn sm" data-rec-del title="Löschen">✕</button></div>`; };
     modal.innerHTML = `
       <h3 class="modal-title">🔁 Wiederkehrende Ausgaben</h3>
       <p class="muted small">Werden automatisch jeden Monat (bzw. jährlich) als Ausgabe eingetragen — ab dem Anlegen.</p>
@@ -1351,17 +1381,26 @@
     const list = modal.querySelector("[data-recs]");
     modal.querySelector("#rec-add").onclick = () => list.insertAdjacentHTML("beforeend", rowHtml({ id: "", interval: "monthly", day: 1, category: Store.state.budgetCategories[0]?.id }));
     list.onclick = (e) => { const b = e.target.closest("[data-rec-del]"); if (b) b.closest("[data-rec-row]").remove(); };
+    // Monat nur bei „jährlich" zeigen
+    list.onchange = (e) => {
+      if (e.target.dataset.r === "interval") {
+        const mSel = e.target.closest("[data-rec-row]").querySelector('[data-r="month"]');
+        if (mSel) mSel.hidden = e.target.value !== "yearly";
+      }
+    };
     modal.querySelector('[data-x="cancel"]').onclick = hideModal;
     modal.querySelector('[data-x="save"]').onclick = async () => {
       const cur = Store.todayStr().slice(0, 7);
       const old = await Store.getRecurring();
       const recs2 = [...list.querySelectorAll("[data-rec-row]")].map(row => {
-        const get = (k) => row.querySelector(`[data-r="${k}"]`).value;
+        const get = (k) => { const el = row.querySelector(`[data-r="${k}"]`); return el ? el.value : ""; };
         const amount = +get("amount"); if (!(amount > 0)) return null;
         const id = row.dataset.id || Store.uid();
         const prev = old.find(x => x.id === id);
+        const interval = get("interval");
         return { id, amount, category: get("category"), note: get("note").trim(),
-          interval: get("interval"), day: Math.min(28, Math.max(1, +get("day") || 1)),
+          interval, day: Math.min(28, Math.max(1, +get("day") || 1)),
+          month: interval === "yearly" ? Math.min(12, Math.max(1, +get("month") || 1)) : null,
           startYm: prev ? prev.startYm : cur };
       }).filter(Boolean);
       await Store.setRecurring(recs2);
@@ -2268,8 +2307,31 @@
   }
   function closeSidebarMobile() { $("#sidebar").classList.remove("open"); }
 
+  // Bulletproof-Update: prüft am Cache vorbei, ob eine neuere Version live ist.
+  // Wenn ja → Service Worker + Caches entfernen und frisch laden. Unabhängig vom SW.
+  async function checkForUpdate() {
+    try {
+      const r = await fetch(`version.json?t=${Date.now()}`, { cache: "no-store" });
+      if (!r.ok) return false;
+      const { v } = await r.json();
+      if (v && v !== APP_VERSION && !sessionStorage.getItem("maki-updating")) {
+        sessionStorage.setItem("maki-updating", "1");
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(reg => reg.unregister()));
+        }
+        if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); }
+        location.reload();
+        return true;   // Seite lädt gleich neu — Rest überspringen
+      }
+      sessionStorage.removeItem("maki-updating");
+    } catch { /* offline o.ä. → mit vorhandener Version weitermachen */ }
+    return false;
+  }
+
   /* ============ START ============ */
   async function start() {
+    if (await checkForUpdate()) return;   // veraltet → lädt automatisch neu
     applyTheme();
     applyAccent();
     // Standardansicht beim Öffnen

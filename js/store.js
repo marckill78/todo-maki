@@ -575,11 +575,11 @@ const Store = (() => {
     let created = 0;
     for (const r of recs) {
       const startYm = r.startYm || cur;
-      const startMonth = +startYm.split("-")[1];
+      const yearlyMonth = r.month || +startYm.split("-")[1];   // Monat für jährliche Abos
       let [y, m] = startYm.split("-").map(Number);
       while (y < cy || (y === cy && m <= cm)) {
         const ym = `${y}-${String(m).padStart(2, "0")}`;
-        const applies = r.interval === "yearly" ? (m === startMonth) : true;
+        const applies = r.interval === "yearly" ? (m === yearlyMonth) : true;
         if (applies && !have.has(r.id + "|" + ym)) {
           const dim = new Date(y, m, 0).getDate();
           const day = Math.min(r.day || 1, dim);
