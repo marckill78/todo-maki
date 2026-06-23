@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v31";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v32";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -2378,8 +2378,18 @@
   }
 
   /* ============ START ============ */
+  // Dev-Umgebung sichtbar kennzeichnen, damit die Test-App nie mit 1.0 verwechselt wird
+  function markDevEnv() {
+    if (!location.pathname.includes("todo-maki-dev")) return;
+    document.title = "Maki DEV";
+    const brand = document.querySelector(".brand-name");
+    if (brand && !document.querySelector(".dev-flag"))
+      brand.insertAdjacentHTML("afterend", `<span class="dev-flag">DEV</span>`);
+  }
+
   async function start() {
     if (await checkForUpdate()) return;   // veraltet → lädt automatisch neu
+    markDevEnv();
     applyTheme();
     applyAccent();
     // Standardansicht beim Öffnen

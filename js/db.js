@@ -15,7 +15,10 @@
 */
 
 const DB = (() => {
-  const DB_NAME = "todo-maki";
+  // Umgebungs-Trennung: Die Dev-Version (URL .../todo-maki-dev/) nutzt eine EIGENE
+  // lokale Datenbank, damit Experimente die echten Produktiv-Daten (1.0) nie berühren.
+  const IS_DEV = location.pathname.includes("todo-maki-dev");
+  const DB_NAME = IS_DEV ? "todo-maki-dev" : "todo-maki";
   const DB_VERSION = 4;
   let _db = null;
   // Diese Stores werden (bei aktivem Login) mit der Cloud synchronisiert

@@ -1,7 +1,7 @@
 {
-  "name": "ToDo Maki",
-  "short_name": "Maki",
-  "description": "Persönliche ToDo-Liste — Bereiche, Mein Tag, Kalender. Offline & lokal.",
+  "name": "Maki DEV",
+  "short_name": "Maki DEV",
+  "description": "Test-/Entwicklungsversion von ToDo Maki — getrennte Daten, kein Sync.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

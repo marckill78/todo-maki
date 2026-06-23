@@ -51,6 +51,9 @@ const Sync = (() => {
     // Auf 127.0.0.1 (lokaler Dev-Server) ist die Domain nicht für OAuth freigegeben →
     // Sync deaktivieren, sonst Endlos-Popup. „localhost" und die Live-Domain sind ok.
     if (location.hostname === "127.0.0.1") { console.info("Sync auf 127.0.0.1 deaktiviert (Dev)"); return; }
+    // Dev-Umgebung (.../todo-maki-dev/): KEIN Cloud-Sync — schützt die echten 1.0-Daten
+    // in Firebase vor Test-Experimenten. Dev arbeitet rein lokal (eigene IndexedDB).
+    if (location.pathname.includes("todo-maki-dev")) { console.info("Sync in Dev-Umgebung deaktiviert"); return; }
     if (typeof firebase === "undefined") { console.warn("Firebase nicht geladen"); return; }
     try {
       firebase.initializeApp(firebaseConfig);
