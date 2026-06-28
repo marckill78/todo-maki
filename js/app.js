@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v33";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v34";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -297,9 +297,15 @@
     });
     const dateStr = new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
 
-    let html = renderHeaderTitle("☀️ Mein Tag", dateStr);
+    let html = `<div class="view-head">
+        <h2>☀️ Mein Tag</h2>
+        <button class="chip-toggle${shoppingOn() ? " on" : ""}" id="toggle-shopping" title="Einkaufsliste ein-/ausblenden">🛒 Einkaufsliste</button>
+        <p class="view-sub">${esc(dateStr)}</p>
+      </div>`;
+    if (shoppingOn()) html += shoppingBoxHtml();   // ganz oben, wenn eingeschaltet
     if (!tasks.length && !mdGoals.length && !mdPlaces.length && !mdPurchases.length && !mdSubs.length) {
-      html += emptyState("Nichts für heute 🎉", "Markiere Aufgaben, Unteraufgaben, Ziele, Orte oder Anschaffungen für „Mein Tag“.");
+      if (!shoppingOn())
+        html += emptyState("Nichts für heute 🎉", "Markiere Aufgaben, Unteraufgaben, Ziele, Orte oder Anschaffungen für „Mein Tag“.");
     } else {
       if (tasks.length) html += controlsBar();
       html += listSection("Überfällig", applySort(applyFilters(overdue)));
@@ -311,10 +317,61 @@
       if (mdPurchases.length) html += `<div class="list-block"><h3 class="block-title">🛒 Anschaffungen <span class="block-n">${mdPurchases.length}</span></h3><div class="card-grid">${mdPurchases.map(purchaseCard).join("")}</div></div>`;
     }
     content.innerHTML = html;
+    $("#toggle-shopping").onclick = () => { setShoppingOn(!shoppingOn()); viewMyDay(); };
+    bindShopping();
     $$("#content .goal-card").forEach(c => c.onclick = () => openGoalPanel(c.dataset.id));
     $$("#content .place-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]")) openPlacePanel(c.dataset.id); });
     $$("#content .purchase-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]")) openPurchasePanel(c.dataset.id); });
     loadMediaImages();
+  }
+
+  /* Einkaufslisten-Box (Markup) — wird ganz oben in „Mein Tag" gezeigt */
+  function shoppingBoxHtml() {
+    const items = getShopping();
+    const openN = items.filter(i => !i.done).length;
+    const doneN = items.length - openN;
+    const rows = items.map(i => `
+      <li class="shop-item${i.done ? " done" : ""}" data-shop="${i.id}">
+        <label class="shop-check">
+          <input type="checkbox" data-shop-toggle ${i.done ? "checked" : ""}>
+          <span>${esc(i.text)}</span>
+        </label>
+        <button class="icon-btn sm" data-shop-del title="Entfernen">✕</button>
+      </li>`).join("");
+    return `<div class="shopping" id="shopping-box">
+      <div class="shopping-head">
+        <h3>🛒 Einkaufsliste ${items.length ? `<span class="block-n">${openN}</span>` : ""}</h3>
+        ${doneN ? `<button class="link-btn" data-shop-clear>Erledigte löschen (${doneN})</button>` : ""}
+      </div>
+      <form class="shopping-add" data-shop-add>
+        <input type="text" placeholder="Artikel hinzufügen…" autocomplete="off" enterkeyhint="done" maxlength="80">
+        <button type="submit" class="btn-primary sm" title="Hinzufügen">＋</button>
+      </form>
+      ${items.length ? `<ul class="shopping-list">${rows}</ul>`
+        : `<p class="muted small shop-empty">Noch keine Artikel — oben eintippen und Enter.</p>`}
+    </div>`;
+  }
+  // Nur die Box neu zeichnen (hält Tipp-Fokus, schnelle Updates)
+  function refreshShopping(focus) {
+    const box = $("#shopping-box"); if (!box) return;
+    box.outerHTML = shoppingBoxHtml();
+    bindShopping();
+    if (focus) { const inp = $("#shopping-box input[type=text]"); if (inp) inp.focus(); }
+  }
+  function bindShopping() {
+    const box = $("#shopping-box"); if (!box) return;
+    box.querySelector("[data-shop-add]").onsubmit = (e) => {
+      e.preventDefault();
+      const inp = e.target.querySelector("input");
+      addShoppingItem(inp.value); inp.value = ""; refreshShopping(true);
+    };
+    box.querySelectorAll("[data-shop]").forEach(li => {
+      const id = li.dataset.shop;
+      li.querySelector("[data-shop-toggle]").onchange = () => { toggleShoppingItem(id); refreshShopping(false); };
+      li.querySelector("[data-shop-del]").onclick = () => { deleteShoppingItem(id); refreshShopping(false); };
+    });
+    const clr = box.querySelector("[data-shop-clear]");
+    if (clr) clr.onclick = () => { clearCheckedShopping(); refreshShopping(false); };
   }
 
   function viewArea() {
@@ -2187,6 +2244,22 @@
     saveTemplates(list);
   }
   function deleteTemplate(id) { saveTemplates(getTemplates().filter(t => t.id !== id)); }
+
+  /* ============ EINKAUFSLISTE (Mein Tag, ein-/ausschaltbar) ============ */
+  const shoppingOn = () => localStorage.getItem("maki-shopping-on") === "1";
+  const setShoppingOn = (on) => localStorage.setItem("maki-shopping-on", on ? "1" : "0");
+  const getShopping = () => { try { return JSON.parse(localStorage.getItem("maki-shopping") || "[]"); } catch { return []; } };
+  const saveShopping = (list) => localStorage.setItem("maki-shopping", JSON.stringify(list));
+  function addShoppingItem(text) {
+    const t = (text || "").trim(); if (!t) return;
+    const list = getShopping(); list.push({ id: Store.uid(), text: t, done: false }); saveShopping(list);
+  }
+  function toggleShoppingItem(id) {
+    const list = getShopping(); const it = list.find(x => x.id === id);
+    if (it) { it.done = !it.done; saveShopping(list); }
+  }
+  function deleteShoppingItem(id) { saveShopping(getShopping().filter(x => x.id !== id)); }
+  function clearCheckedShopping() { saveShopping(getShopping().filter(x => !x.done)); }
   async function createTaskFromTemplate(tpl, myDay) {
     return Store.addTask({
       title: tpl.title, areaId: tpl.areaId, priority: tpl.priority,
