@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v31";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v32";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -297,17 +297,23 @@
     });
     const dateStr = new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
 
+    const anyList = listOn(CHECKLISTS.quicktodo) || listOn(CHECKLISTS.shopping);
     let html = `<div class="view-head">
         <h2>☀️ Mein Tag</h2>
-        <button class="chip-toggle${shoppingOn() ? " on" : ""}" id="toggle-shopping" title="Einkaufsliste ein-/ausblenden">🛒 Einkaufsliste</button>
+        <div class="head-chips">
+          <button class="chip-toggle${listOn(CHECKLISTS.quicktodo) ? " on" : ""}" data-chip="quicktodo" title="Schnell-ToDo ein-/ausblenden">⚡ Schnell-ToDo</button>
+          <button class="chip-toggle${listOn(CHECKLISTS.shopping) ? " on" : ""}" data-chip="shopping" title="Einkaufsliste ein-/ausblenden">🛒 Einkaufsliste</button>
+          <button class="chip-toggle${myDayFiltersOn() ? " on" : ""}" data-chip="filters" title="Filter ein-/ausblenden">🔎 Filter</button>
+        </div>
         <p class="view-sub">${esc(dateStr)}</p>
       </div>`;
-    if (shoppingOn()) html += shoppingBoxHtml();   // ganz oben, wenn eingeschaltet
+    if (listOn(CHECKLISTS.quicktodo)) html += checklistHtml(CHECKLISTS.quicktodo);  // ganz oben
+    if (listOn(CHECKLISTS.shopping))  html += checklistHtml(CHECKLISTS.shopping);
     if (!tasks.length && !mdGoals.length && !mdPlaces.length && !mdPurchases.length && !mdSubs.length) {
-      if (!shoppingOn())
+      if (!anyList)
         html += emptyState("Nichts für heute 🎉", "Markiere Aufgaben, Unteraufgaben, Ziele, Orte oder Anschaffungen für „Mein Tag“.");
     } else {
-      if (tasks.length) html += controlsBar();
+      if (tasks.length && myDayFiltersOn()) html += controlsBar();
       html += listSection("Überfällig", applySort(applyFilters(overdue)));
       html += listSection(overdue.length ? "Heute" : "", applySort(applyFilters(rest)), { alwaysShow: tasks.length && !overdue.length });
       if (mdSubs.length) html += `<div class="list-block"><ul class="task-list">${mdSubs.map(({ t, s }) => mdSubtaskRow(t, s)).join("")}</ul></div>`;
@@ -317,17 +323,23 @@
       if (mdPurchases.length) html += `<div class="list-block"><h3 class="block-title">🛒 Anschaffungen <span class="block-n">${mdPurchases.length}</span></h3><div class="card-grid">${mdPurchases.map(purchaseCard).join("")}</div></div>`;
     }
     content.innerHTML = html;
-    $("#toggle-shopping").onclick = () => { setShoppingOn(!shoppingOn()); viewMyDay(); };
-    bindShopping();
+    $$("#content .head-chips [data-chip]").forEach(b => b.onclick = () => {
+      const k = b.dataset.chip;
+      if (k === "filters") setMyDayFiltersOn(!myDayFiltersOn());
+      else setListOn(CHECKLISTS[k], !listOn(CHECKLISTS[k]));
+      viewMyDay();
+    });
+    if (listOn(CHECKLISTS.quicktodo)) bindChecklist(CHECKLISTS.quicktodo);
+    if (listOn(CHECKLISTS.shopping))  bindChecklist(CHECKLISTS.shopping);
     $$("#content .goal-card").forEach(c => c.onclick = () => openGoalPanel(c.dataset.id));
     $$("#content .place-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]")) openPlacePanel(c.dataset.id); });
     $$("#content .purchase-card").forEach(c => c.onclick = (e) => { if (!e.target.closest("[data-pact]")) openPurchasePanel(c.dataset.id); });
     loadMediaImages();
   }
 
-  /* Einkaufslisten-Box (Markup) — wird ganz oben in „Mein Tag" gezeigt */
-  function shoppingBoxHtml() {
-    const items = getShopping();
+  /* Checklisten-Box (Markup) — generisch für Schnell-ToDo & Einkaufsliste */
+  function checklistHtml(cfg) {
+    const items = Store.state[cfg.store];
     const openN = items.filter(i => !i.done).length;
     const doneN = items.length - openN;
     const rows = items.map(i => `
@@ -338,40 +350,40 @@
         </label>
         <button class="icon-btn sm" data-shop-del title="Entfernen">✕</button>
       </li>`).join("");
-    return `<div class="shopping" id="shopping-box">
+    return `<div class="shopping" id="box-${cfg.store}">
       <div class="shopping-head">
-        <h3>🛒 Einkaufsliste ${items.length ? `<span class="block-n">${openN}</span>` : ""}</h3>
+        <h3>${cfg.icon} ${esc(cfg.title)} ${items.length ? `<span class="block-n">${openN}</span>` : ""}</h3>
         ${doneN ? `<button class="link-btn" data-shop-clear>Erledigte löschen (${doneN})</button>` : ""}
       </div>
       <form class="shopping-add" data-shop-add>
-        <input type="text" placeholder="Artikel hinzufügen…" autocomplete="off" enterkeyhint="done" maxlength="80">
+        <input type="text" placeholder="${esc(cfg.ph)}" autocomplete="off" enterkeyhint="done" maxlength="80">
         <button type="submit" class="btn-primary sm" title="Hinzufügen">＋</button>
       </form>
       ${items.length ? `<ul class="shopping-list">${rows}</ul>`
-        : `<p class="muted small shop-empty">Noch keine Artikel — oben eintippen und Enter.</p>`}
+        : `<p class="muted small shop-empty">${esc(cfg.empty)}</p>`}
     </div>`;
   }
   // Nur die Box neu zeichnen (hält Tipp-Fokus, schnelle Updates)
-  function refreshShopping(focus) {
-    const box = $("#shopping-box"); if (!box) return;
-    box.outerHTML = shoppingBoxHtml();
-    bindShopping();
-    if (focus) { const inp = $("#shopping-box input[type=text]"); if (inp) inp.focus(); }
+  function refreshChecklist(cfg, focus) {
+    const box = $("#box-" + cfg.store); if (!box) return;
+    box.outerHTML = checklistHtml(cfg);
+    bindChecklist(cfg);
+    if (focus) { const inp = $("#box-" + cfg.store + " input[type=text]"); if (inp) inp.focus(); }
   }
-  function bindShopping() {
-    const box = $("#shopping-box"); if (!box) return;
-    box.querySelector("[data-shop-add]").onsubmit = (e) => {
+  function bindChecklist(cfg) {
+    const box = $("#box-" + cfg.store); if (!box) return;
+    box.querySelector("[data-shop-add]").onsubmit = async (e) => {
       e.preventDefault();
       const inp = e.target.querySelector("input");
-      addShoppingItem(inp.value); inp.value = ""; refreshShopping(true);
+      await Store.addChecklistItem(cfg.store, inp.value); inp.value = ""; refreshChecklist(cfg, true);
     };
     box.querySelectorAll("[data-shop]").forEach(li => {
       const id = li.dataset.shop;
-      li.querySelector("[data-shop-toggle]").onchange = () => { toggleShoppingItem(id); refreshShopping(false); };
-      li.querySelector("[data-shop-del]").onclick = () => { deleteShoppingItem(id); refreshShopping(false); };
+      li.querySelector("[data-shop-toggle]").onchange = async () => { await Store.toggleChecklistItem(cfg.store, id); refreshChecklist(cfg, false); };
+      li.querySelector("[data-shop-del]").onclick = async () => { await Store.deleteChecklistItem(cfg.store, id); refreshChecklist(cfg, false); };
     });
     const clr = box.querySelector("[data-shop-clear]");
-    if (clr) clr.onclick = () => { clearCheckedShopping(); refreshShopping(false); };
+    if (clr) clr.onclick = async () => { await Store.clearCheckedChecklist(cfg.store); refreshChecklist(cfg, false); };
   }
 
   function viewArea() {
@@ -2218,21 +2230,20 @@
   }
   function deleteTemplate(id) { saveTemplates(getTemplates().filter(t => t.id !== id)); }
 
-  /* ============ EINKAUFSLISTE (Mein Tag, ein-/ausschaltbar) ============ */
-  const shoppingOn = () => localStorage.getItem("maki-shopping-on") === "1";
-  const setShoppingOn = (on) => localStorage.setItem("maki-shopping-on", on ? "1" : "0");
-  const getShopping = () => { try { return JSON.parse(localStorage.getItem("maki-shopping") || "[]"); } catch { return []; } };
-  const saveShopping = (list) => localStorage.setItem("maki-shopping", JSON.stringify(list));
-  function addShoppingItem(text) {
-    const t = (text || "").trim(); if (!t) return;
-    const list = getShopping(); list.push({ id: Store.uid(), text: t, done: false }); saveShopping(list);
-  }
-  function toggleShoppingItem(id) {
-    const list = getShopping(); const it = list.find(x => x.id === id);
-    if (it) { it.done = !it.done; saveShopping(list); }
-  }
-  function deleteShoppingItem(id) { saveShopping(getShopping().filter(x => x.id !== id)); }
-  function clearCheckedShopping() { saveShopping(getShopping().filter(x => !x.done)); }
+  /* ============ CHECKLISTEN in „Mein Tag" (ein-/ausschaltbar) ============
+     Sichtbarkeit = geräte-lokale Ansichts-Einstellung; die Artikel selbst
+     liegen in synchronisierten Stores und gleichen sich zwischen Geräten ab. */
+  const CHECKLISTS = {
+    quicktodo: { store: "quicktodo", onPref: "maki-quicktodo-on", icon: "⚡", title: "Schnell-ToDo",
+                 ph: "Schnell etwas notieren…", empty: "Noch nichts notiert — oben eintippen und Enter." },
+    shopping:  { store: "shopping",  onPref: "maki-shopping-on",  icon: "🛒", title: "Einkaufsliste",
+                 ph: "Artikel hinzufügen…",     empty: "Noch keine Artikel — oben eintippen und Enter." }
+  };
+  const listOn = (cfg) => localStorage.getItem(cfg.onPref) === "1";
+  const setListOn = (cfg, on) => localStorage.setItem(cfg.onPref, on ? "1" : "0");
+  // Filterleiste in „Mein Tag" ist standardmäßig ausgeblendet (auf Wunsch einblendbar)
+  const myDayFiltersOn = () => localStorage.getItem("maki-myday-filters") === "1";
+  const setMyDayFiltersOn = (on) => localStorage.setItem("maki-myday-filters", on ? "1" : "0");
   async function createTaskFromTemplate(tpl, myDay) {
     return Store.addTask({
       title: tpl.title, areaId: tpl.areaId, priority: tpl.priority,

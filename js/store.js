@@ -9,6 +9,8 @@ const Store = (() => {
     goals: [],           // Bucketlist
     places: [],          // Orte
     purchases: [],       // Anschaffungen
+    shopping: [],        // Einkaufsliste (Mein Tag) — synchronisiert
+    quicktodo: [],       // Schnell-ToDo (Mein Tag) — synchronisiert
     budgetCategories: [], // Budget-Kategorien
     purchaseCategories: [], // Anschaffungs-Kategorien
     loaded: false
@@ -87,6 +89,8 @@ const Store = (() => {
     state.goals = (await DB.getAll("goals")).sort((a, b) => (a.order || 0) - (b.order || 0));
     state.places = (await DB.getAll("places")).sort((a, b) => (a.order || 0) - (b.order || 0));
     state.purchases = (await DB.getAll("purchases")).sort((a, b) => (a.order || 0) - (b.order || 0));
+    state.shopping = (await DB.getAll("shopping")).sort((a, b) => (a.order || 0) - (b.order || 0));
+    state.quicktodo = (await DB.getAll("quicktodo")).sort((a, b) => (a.order || 0) - (b.order || 0));
     state.budgetCategories = (await DB.metaGet("budget-categories")) || DEFAULT_BUDGET_CATEGORIES;
     state.purchaseCategories = (await DB.metaGet("purchase-categories")) || DEFAULT_PURCHASE_CATEGORIES;
 
@@ -104,6 +108,8 @@ const Store = (() => {
     state.goals = (await DB.getAll("goals")).sort((a, b) => (a.order || 0) - (b.order || 0));
     state.places = (await DB.getAll("places")).sort((a, b) => (a.order || 0) - (b.order || 0));
     state.purchases = (await DB.getAll("purchases")).sort((a, b) => (a.order || 0) - (b.order || 0));
+    state.shopping = (await DB.getAll("shopping")).sort((a, b) => (a.order || 0) - (b.order || 0));
+    state.quicktodo = (await DB.getAll("quicktodo")).sort((a, b) => (a.order || 0) - (b.order || 0));
   }
 
   /* Einmalige Datenmigrationen (greifen in bestehende Installationen) */
@@ -125,6 +131,21 @@ const Store = (() => {
       state.budgetCategories = merged;
       await DB.metaSet("budget-categories", merged);
       await DB.metaSet("mig-budget-cats-1", true);
+    }
+    // 3) Einkaufsliste: bisher gerätelokal (localStorage) → in den synchronisierten
+    //    Store übernehmen, damit sie zwischen Geräten abgeglichen wird. Einmalig pro Gerät.
+    if (!(await DB.metaGet("mig-shopping-1"))) {
+      try {
+        const old = JSON.parse(localStorage.getItem("maki-shopping") || "[]");
+        let i = state.shopping.length;
+        for (const it of Array.isArray(old) ? old : []) {
+          if (!it || !it.text) continue;
+          const item = { id: uid(), text: String(it.text), done: !!it.done, order: i++, createdAt: Date.now() };
+          await DB.put("shopping", item); state.shopping.push(item);
+        }
+        localStorage.removeItem("maki-shopping");   // Quelle entfernen, künftig aus dem Store
+      } catch { /* defekte Altdaten ignorieren */ }
+      await DB.metaSet("mig-shopping-1", true);
     }
   }
 
@@ -381,6 +402,8 @@ const Store = (() => {
     const places = await DB.getAll("places");
     const purchases = await DB.getAll("purchases");
     const expenses = await DB.getAll("expenses");
+    const shopping = await DB.getAll("shopping");
+    const quicktodo = await DB.getAll("quicktodo");
     const budgetCategories = (await DB.metaGet("budget-categories")) || null;
     const purchaseCategories = (await DB.metaGet("purchase-categories")) || null;
     const attsRaw = await DB.getAll("attachments");
@@ -396,7 +419,7 @@ const Store = (() => {
     for (const m of mediaRaw) media.push({ id: m.id, data: await blobToDataURL(m.blob) });
     return {
       app: "todo-maki", version: 3, exportedAt: new Date().toISOString(),
-      areas, tasks, goals, places, purchases, expenses, budgetCategories, purchaseCategories, attachments, media
+      areas, tasks, goals, places, purchases, expenses, shopping, quicktodo, budgetCategories, purchaseCategories, attachments, media
     };
   }
 
@@ -405,7 +428,7 @@ const Store = (() => {
     if (!data || data.app !== "todo-maki" || !Array.isArray(data.areas))
       throw new Error("Ungültige Backup-Datei.");
     if (mode === "replace") {
-      for (const s of ["areas", "tasks", "attachments", "goals", "places", "purchases", "expenses", "media"]) await DB.clear(s);
+      for (const s of ["areas", "tasks", "attachments", "goals", "places", "purchases", "expenses", "shopping", "quicktodo", "media"]) await DB.clear(s);
     }
     const existIds = mode === "merge"
       ? new Set([...(await DB.getAll("areas")), ...(await DB.getAll("tasks"))].map(x => x.id))
@@ -416,6 +439,8 @@ const Store = (() => {
     for (const p of (data.places || [])) await DB.put("places", p);
     for (const pu of (data.purchases || [])) await DB.put("purchases", pu);
     for (const ex of (data.expenses || [])) await DB.put("expenses", ex);
+    for (const sh of (data.shopping || [])) await DB.put("shopping", sh);
+    for (const qt of (data.quicktodo || [])) await DB.put("quicktodo", qt);
     if (data.budgetCategories) await DB.metaSet("budget-categories", data.budgetCategories);
     if (data.purchaseCategories) await DB.metaSet("purchase-categories", data.purchaseCategories);
     for (const at of (data.attachments || [])) {
@@ -445,6 +470,28 @@ const Store = (() => {
   }
   const getMedia = (id) => DB.get("media", id);
   const delMedia = (id) => id && DB.del("media", id);
+
+  /* ---------- Checklisten (Mein Tag): Einkaufsliste + Schnell-ToDo ----------
+     Beide sind synchronisierte Stores gleicher Form ({id,text,done,order}).
+     `store` ist "shopping" oder "quicktodo". */
+  async function addChecklistItem(store, text) {
+    const t = (text || "").trim(); if (!t) return null;
+    const item = { id: uid(), text: t, done: false, order: state[store].length, createdAt: Date.now() };
+    await DB.put(store, item); state[store].push(item); return item;
+  }
+  async function toggleChecklistItem(store, id) {
+    const it = state[store].find(x => x.id === id); if (!it) return;
+    it.done = !it.done; await DB.put(store, it);
+  }
+  async function deleteChecklistItem(store, id) {
+    await DB.del(store, id);
+    state[store] = state[store].filter(x => x.id !== id);
+  }
+  async function clearCheckedChecklist(store) {
+    const checked = state[store].filter(x => x.done);
+    for (const it of checked) await DB.del(store, it.id);
+    state[store] = state[store].filter(x => !x.done);
+  }
 
   /* ---------- Ziele (Bucketlist) ---------- */
   async function addGoal(data = {}) {
@@ -605,6 +652,7 @@ const Store = (() => {
     archivedTasks, restoreTask,
     trashedItems, restoreFromTrash, purgeTrashEntry, emptyTrash, TRASH_DAYS,
     addMedia, getMedia, delMedia,
+    addChecklistItem, toggleChecklistItem, deleteChecklistItem, clearCheckedChecklist,
     addGoal, updateGoal, deleteGoal, goalProgress,
     addPlace, updatePlace, deletePlace,
     addPurchase, updatePurchase, deletePurchase, purchaseCategoryById, setPurchaseCategories,

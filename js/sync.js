@@ -15,7 +15,7 @@ const Sync = (() => {
   };
 
   // Diese Stores werden synchronisiert (Bilder/Anhänge bleiben lokal pro Gerät)
-  const COLLECTIONS = ["areas", "tasks", "goals", "places", "purchases", "expenses"];
+  const COLLECTIONS = ["areas", "tasks", "goals", "places", "purchases", "expenses", "shopping", "quicktodo"];
 
   let auth = null, db = null, storage = null;
   let user = null;

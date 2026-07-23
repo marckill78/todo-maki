@@ -135,6 +135,8 @@ input, select, textarea { font-family: inherit; font-size: 15px; color: var(--in
 }
 .view-sub { color: var(--ink-soft); font-size: 14px; width: 100%; }
 
+/* Umschalt-Chips-Reihe im View-Kopf (Schnell-ToDo / Einkaufsliste / Filter) */
+.head-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 /* Umschalt-Chip (z. B. Einkaufsliste in „Mein Tag") */
 .chip-toggle {
   font-size: 13px; font-weight: 650; padding: 6px 12px; border-radius: 20px;
