@@ -492,6 +492,14 @@ const Store = (() => {
     for (const it of checked) await DB.del(store, it.id);
     state[store] = state[store].filter(x => !x.done);
   }
+  // Text korrigieren / Priorität setzen (patch: {text?, prio?})
+  async function updateChecklistItem(store, id, patch) {
+    const it = state[store].find(x => x.id === id); if (!it) return;
+    if (patch.text != null) { const t = patch.text.trim(); if (t) it.text = t; }  // leere Eingabe ignorieren
+    if (patch.prio != null) it.prio = patch.prio;
+    await DB.put(store, it);
+  }
+  const reorderChecklist = (store, ids) => reorderGeneric(store, state[store], ids);
 
   /* ---------- Ziele (Bucketlist) ---------- */
   async function addGoal(data = {}) {
@@ -653,6 +661,7 @@ const Store = (() => {
     trashedItems, restoreFromTrash, purgeTrashEntry, emptyTrash, TRASH_DAYS,
     addMedia, getMedia, delMedia,
     addChecklistItem, toggleChecklistItem, deleteChecklistItem, clearCheckedChecklist,
+    updateChecklistItem, reorderChecklist,
     addGoal, updateGoal, deleteGoal, goalProgress,
     addPlace, updatePlace, deletePlace,
     addPurchase, updatePurchase, deletePurchase, purchaseCategoryById, setPurchaseCategories,

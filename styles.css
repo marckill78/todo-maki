@@ -162,15 +162,24 @@ input, select, textarea { font-family: inherit; font-size: 15px; color: var(--in
 .btn-primary.sm { padding: 8px 14px; font-size: 15px; }
 .shopping-list { list-style: none; display: flex; flex-direction: column; }
 .shop-item {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 9px;
   padding: 9px 2px; border-top: 1px solid var(--line);
 }
 .shop-item:first-child { border-top: none; }
-.shop-check { flex: 1; display: flex; align-items: center; gap: 11px; cursor: pointer; min-width: 0; }
-.shop-check input { width: 19px; height: 19px; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
-.shop-check span { word-break: break-word; }
-.shop-item.done .shop-check span { text-decoration: line-through; color: var(--ink-soft); }
-.shop-item [data-shop-del] { opacity: .5; }
+.shop-item.dragging { opacity: .55; }
+.shop-drag { cursor: grab; color: var(--ink-soft); font-size: 14px; line-height: 1; padding: 0 1px; opacity: .55; touch-action: none; user-select: none; flex-shrink: 0; }
+.shop-drag:active { cursor: grabbing; }
+@media (hover: none) { .shop-drag { opacity: .9; } }   /* Touch: Griff sichtbar */
+.shop-cb { width: 19px; height: 19px; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+.shop-text { flex: 1; min-width: 0; word-break: break-word; outline: none; padding: 3px 5px; border-radius: 6px; cursor: text; }
+.shop-text:focus { background: var(--surface-2); box-shadow: 0 0 0 2px var(--accent-soft); }
+.shop-item.done .shop-text { text-decoration: line-through; color: var(--ink-soft); }
+/* Prioritäts-Punkt: keine / hoch / mittel / niedrig */
+.shop-prio { width: 15px; height: 15px; border-radius: 50%; flex-shrink: 0; border: 2px solid var(--line); background: transparent; padding: 0; }
+.shop-prio.p1 { background: #e74c3c; border-color: #e74c3c; }
+.shop-prio.p2 { background: #e67e22; border-color: #e67e22; }
+.shop-prio.p3 { background: #3498db; border-color: #3498db; }
+.shop-item [data-shop-del] { opacity: .5; flex-shrink: 0; }
 .shop-item:hover [data-shop-del] { opacity: 1; }
 .shop-empty { padding: 4px 2px 2px; }
 

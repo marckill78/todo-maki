@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v34";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v35";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -344,10 +344,10 @@
     const doneN = items.length - openN;
     const rows = items.map(i => `
       <li class="shop-item${i.done ? " done" : ""}" data-shop="${i.id}">
-        <label class="shop-check">
-          <input type="checkbox" data-shop-toggle ${i.done ? "checked" : ""}>
-          <span>${esc(i.text)}</span>
-        </label>
+        <span class="shop-drag" data-shop-drag title="Ziehen zum Sortieren">⠿</span>
+        <input type="checkbox" class="shop-cb" data-shop-toggle ${i.done ? "checked" : ""}>
+        <span class="shop-text" data-shop-text contenteditable="true" spellcheck="false" enterkeyhint="done">${esc(i.text)}</span>
+        <button class="shop-prio p${i.prio || 0}" data-shop-prio title="Priorität (tippen zum Wechseln)"></button>
         <button class="icon-btn sm" data-shop-del title="Entfernen">✕</button>
       </li>`).join("");
     return `<div class="shopping" id="box-${cfg.store}">
@@ -381,7 +381,26 @@
       const id = li.dataset.shop;
       li.querySelector("[data-shop-toggle]").onchange = async () => { await Store.toggleChecklistItem(cfg.store, id); refreshChecklist(cfg, false); };
       li.querySelector("[data-shop-del]").onclick = async () => { await Store.deleteChecklistItem(cfg.store, id); refreshChecklist(cfg, false); };
+      // Inline-Text bearbeiten (Tippfehler korrigieren)
+      const txt = li.querySelector("[data-shop-text]");
+      const orig = txt.textContent;
+      txt.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); txt.blur(); } };
+      txt.onblur = async () => {
+        const val = txt.textContent.trim();
+        if (val && val !== orig) { await Store.updateChecklistItem(cfg.store, id, { text: val }); refreshChecklist(cfg, false); }
+        else if (!val) txt.textContent = orig;   // Leeres verwerfen, alten Text zurück
+      };
+      // Priorität durchtippen: keine → hoch → mittel → niedrig → keine
+      li.querySelector("[data-shop-prio]").onclick = async () => {
+        const it = Store.state[cfg.store].find(x => x.id === id) || {};
+        await Store.updateChecklistItem(cfg.store, id, { prio: ((it.prio || 0) + 1) % 4 });
+        refreshChecklist(cfg, false);
+      };
     });
+    // Reihenfolge per Ziehen ändern (Maus + Touch)
+    const ul = box.querySelector(".shopping-list");
+    if (ul) makeSortable(ul, "[data-shop-drag]", ".shop-item", "shop",
+      (ids) => Store.reorderChecklist(cfg.store, ids).then(() => refreshChecklist(cfg, false)));
     const clr = box.querySelector("[data-shop-clear]");
     if (clr) clr.onclick = async () => { await Store.clearCheckedChecklist(cfg.store); refreshChecklist(cfg, false); };
   }
