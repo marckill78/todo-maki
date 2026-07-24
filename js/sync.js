@@ -104,7 +104,11 @@ const Sync = (() => {
   }
   function pushDelete(coll, id) {
     if (!isOn() || applyingRemote) return;
-    docRef(user.uid, coll, id).delete().catch(e => onWriteError(e));
+    // Statt Hard-Delete einen Tombstone setzen: Die Löschung ist damit ein
+    // datiertes Ereignis in der Cloud und wird beim Merge respektiert
+    // (verhindert „gelöschte Einträge tauchen wieder auf").
+    docRef(user.uid, coll, id).set({ id: String(id), _deleted: true, updatedAt: Date.now() })
+      .catch(e => onWriteError(e));
   }
   function onWriteError(e) {
     console.warn("Sync-Schreibfehler", e);
@@ -142,20 +146,24 @@ const Sync = (() => {
 
       applyingRemote = true;
       if (localEmpty && remoteHasData) {
-        // Frisches Gerät: Default-Seed verwerfen, nur Cloud übernehmen
+        // Frisches Gerät: Default-Seed verwerfen, nur Cloud übernehmen (Tombstones auslassen)
         for (const coll of COLLECTIONS) {
           await DB.clear(coll);
-          remoteCache[coll].forEach(d => DB.put(coll, d.data(), { fromRemote: true }));
+          remoteCache[coll].forEach(d => { const data = d.data(); if (!data._deleted) DB.put(coll, data, { fromRemote: true }); });
         }
       } else {
-        // Zwei-Wege-Merge nach updatedAt (neuere Version gewinnt)
+        // Zwei-Wege-Merge nach updatedAt (neuere Version gewinnt; Löschungen = Tombstones)
         for (const coll of COLLECTIONS) {
           const remote = {}; remoteCache[coll].forEach(d => remote[d.id] = d.data());
           const local = {}; (await DB.getAll(coll)).forEach(o => local[o.id] = o);
           const ids = new Set([...Object.keys(remote), ...Object.keys(local)]);
           for (const id of ids) {
             const r = remote[id], l = local[id];
-            if (r && l) {
+            if (r && r._deleted) {
+              // Cloud sagt „gelöscht": lokal entfernen — außer eine lokale Änderung ist NEUER
+              if (l && (l.updatedAt || 0) > (r.updatedAt || 0)) await docRef(uid, coll, id).set(sanitize(l));
+              else if (l) await DB.del(coll, id, { fromRemote: true });
+            } else if (r && l) {
               if ((r.updatedAt || 0) > (l.updatedAt || 0)) await DB.put(coll, r, { fromRemote: true });
               else if ((l.updatedAt || 0) > (r.updatedAt || 0)) await docRef(uid, coll, id).set(sanitize(l));
             } else if (r) { await DB.put(coll, r, { fromRemote: true }); }
@@ -176,17 +184,21 @@ const Sync = (() => {
   function startListeners(uid) {
     stopListeners();
     for (const coll of COLLECTIONS) {
-      const unsub = collRef(uid, coll).onSnapshot({ includeMetadataChanges: false }, (snap) => {
-        let touched = false;
-        snap.docChanges().forEach(async (ch) => {
-          applyingRemote = true;
-          try {
-            if (ch.type === "removed") await DB.del(coll, ch.doc.id, { fromRemote: true });
-            else await DB.put(coll, ch.doc.data(), { fromRemote: true });
-          } finally { applyingRemote = false; }
-          touched = true;
-        });
-        if (touched) scheduleRender();
+      const unsub = collRef(uid, coll).onSnapshot({ includeMetadataChanges: false }, async (snap) => {
+        const changes = snap.docChanges();
+        if (!changes.length) return;
+        applyingRemote = true;
+        try {
+          // ALLE Änderungen erst abarbeiten (awaiten) …
+          for (const ch of changes) {
+            const data = ch.doc.data();
+            if (ch.type === "removed" || (data && data._deleted))
+              await DB.del(coll, ch.doc.id, { fromRemote: true });
+            else
+              await DB.put(coll, data, { fromRemote: true });
+          }
+        } finally { applyingRemote = false; }
+        scheduleRender();   // … und DANN die Ansicht neu zeichnen (Fix: lief vorher nie)
       }, (err) => console.warn("listener", coll, err));
       unsubs.push(unsub);
     }
