@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v33";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v34";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -2009,6 +2009,14 @@
   }
 
   function accountBlock() {
+    // Lokaler Testserver: Sync ist hier bewusst deaktiviert (Login-Domain nicht freigegeben).
+    if (location.hostname === "127.0.0.1" || location.hostname === "localhost") {
+      return `<div class="settings-block" data-account><h4>Konto & Sync</h4>
+        <p class="budget-warn">⚠ Lokaler Test-Modus (${esc(location.hostname)}): Geräte-Sync ist hier deaktiviert.</p>
+        <p class="muted small">Zum Synchronisieren die <strong>Live-App</strong> nutzen:
+          <a href="https://marckill78.github.io/todo-maki/" target="_blank" rel="noopener">marckill78.github.io/todo-maki</a>
+          — dort anmelden und als App installieren (auf Mac & iPhone).</p></div>`;
+    }
     if (!window.Sync || !Sync.isReady()) {
       return `<div class="settings-block" data-account><h4>Konto & Sync</h4>
         <p class="muted small">Sync wird geladen… (benötigt Internet beim ersten Start)</p></div>`;
