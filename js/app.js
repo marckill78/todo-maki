@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v35";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v36";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -174,6 +174,15 @@
     if (str === tmr) return "Morgen";
     return d.toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "short" });
   }
+  // Sehr kompaktes Datum für enge Stellen (Unteraufgaben-Zeile): „Heute" / „16.7."
+  function fmtDueShort(str) {
+    if (!str) return "";
+    const today = Store.todayStr();
+    if (str === today) return "Heute";
+    if (str === Store.addToDate(today, { type: "daily", interval: 1 })) return "Morgen";
+    const d = new Date(str + "T00:00:00");
+    return d.getDate() + "." + (d.getMonth() + 1) + ".";
+  }
 
   /* ============ Toast ============ */
   let toastTimer;
@@ -254,15 +263,17 @@
       <span class="task-chip" style="--chip:${area ? area.color : "#888"}">${area ? area.emoji : "☑"}</span>
       <div class="task-body" data-act="open">
         <div class="task-title-row"><span class="task-title">${esc(s.title)}</span></div>
-        <div class="task-meta"><span class="meta">↳ ${esc(t.title)}</span>${area ? `<span class="meta meta-area" style="--chip:${area.color}">${area.emoji} ${esc(area.name)}</span>` : ""}</div>
+        <div class="task-meta"><span class="meta">↳ ${esc(t.title)}</span>${s.due ? `<span class="meta${(s.due < Store.todayStr() && !s.done) ? " overdue" : ""}">📅 ${esc(fmtDueShort(s.due))}</span>` : ""}${area ? `<span class="meta meta-area" style="--chip:${area.color}">${area.emoji} ${esc(area.name)}</span>` : ""}</div>
       </div>
     </li>`;
   }
   // Kompakte Unteraufgabe für die Listenansicht (abhakbar, ohne Bearbeiten)
   function subRowList(s) {
+    const overdue = s.due && !s.done && s.due < Store.todayStr();
     return `<li class="sub-inline ${s.done ? "done" : ""}" data-subrow="${s.id}">
       <button class="check xs" data-sub-check><span class="check-box">${s.done ? "✓" : ""}</span></button>
       <span class="sub-title">${esc(s.title)}</span>
+      ${s.due ? `<span class="sub-due-badge${overdue ? " overdue" : ""}">📅 ${esc(fmtDueShort(s.due))}</span>` : ""}
     </li>`;
   }
 
@@ -1712,10 +1723,15 @@
       </div>`;
   }
   function subRow(s, showMyDay = false) {
-    return `<li class="sub ${s.done ? "done" : ""}" data-sub="${s.id}">
+    const overdue = showMyDay && s.due && !s.done && s.due < Store.todayStr();
+    return `<li class="sub ${s.done ? "done" : ""}${overdue ? " overdue" : ""}" data-sub="${s.id}">
       <span class="sub-drag" title="Ziehen zum Sortieren">⠿</span>
       <button class="check sm" data-sub-toggle><span class="check-box">${s.done ? "✓" : ""}</span></button>
       <span class="sub-title" data-sub-edit contenteditable="true" spellcheck="false">${esc(s.title)}</span>
+      ${showMyDay ? `<span class="sub-due">
+        <button class="icon-btn sm sub-due-btn ${s.due ? "set" : ""}" data-sub-date title="Datum setzen">${s.due ? esc(fmtDueShort(s.due)) : "📅"}</button>
+        <input type="date" class="sub-due-inp" data-sub-due value="${s.due || ""}" tabindex="-1">
+      </span>` : ""}
       ${showMyDay ? `<button class="icon-btn sm sub-md ${s.myDay ? "on" : ""}" data-sub-md title="Zu „Mein Tag“">☀️</button>` : ""}
       ${showMyDay ? `<button class="icon-btn sm" data-sub-convert title="In eigene Aufgabe umwandeln">↗</button>` : ""}
       <button class="icon-btn sm" data-sub-del>✕</button></li>`;
@@ -1823,14 +1839,28 @@
         s.myDay = !s.myDay;
         await Store.updateTask(t.id, { subtasks: t.subtasks }); refreshSubs(t); render();
       }
+      if (e.target.closest("[data-sub-date]")) {
+        // nativen Datums-Dialog des versteckten Feldes öffnen
+        const inp = li.querySelector("[data-sub-due]");
+        if (inp) { if (inp.showPicker) { try { inp.showPicker(); } catch { inp.focus(); } } else inp.focus(); }
+      }
       if (e.target.closest("[data-sub-convert]")) {
         const s = t.subtasks.find(s => s.id === sid); if (!s) return;
-        await Store.addTask({ title: s.title, areaId: t.areaId, myDay: !!s.myDay });
+        await Store.addTask({ title: s.title, areaId: t.areaId, myDay: !!s.myDay, due: s.due || null });
         t.subtasks = t.subtasks.filter(x => x.id !== sid);
         await Store.updateTask(t.id, { subtasks: t.subtasks });
         refreshSubs(t); render(); toast("In eigene Aufgabe umgewandelt");
       }
     };
+    // Datum einer Unteraufgabe gesetzt/geändert (verstecktes date-Feld)
+    subsEl.addEventListener("change", async (e) => {
+      const inp = e.target.closest("[data-sub-due]"); if (!inp) return;
+      const li = inp.closest("[data-sub]"); if (!li) return;
+      const cur = Store.state.tasks.find(x => x.id === t.id); if (!cur) return;
+      const s = (cur.subtasks || []).find(s => s.id === li.dataset.sub); if (!s) return;
+      s.due = inp.value || null;
+      await Store.updateTask(t.id, { subtasks: cur.subtasks }); refreshSubs(t); render();
+    });
     // Unteraufgaben per Drag sortieren
     makeSortable(subsEl, ".sub-drag", "[data-sub]", "sub", async (ids) => {
       t.subtasks = ids.map(id => (t.subtasks || []).find(s => s.id === id)).filter(Boolean);

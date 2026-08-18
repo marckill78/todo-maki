@@ -353,6 +353,15 @@ input, select, textarea { font-family: inherit; font-size: 15px; color: var(--in
 .sub.dragging { opacity: .5; }
 .sub-add { display: flex; gap: 8px; margin-top: 8px; }
 
+/* Optionales Datum je Unteraufgabe */
+.sub-due { position: relative; display: inline-flex; flex-shrink: 0; }
+.sub-due-inp { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: 0; padding: 0; pointer-events: none; }
+.sub-due-btn { width: auto; min-width: 24px; padding: 0 6px; font-size: 12px; font-weight: 600; color: var(--ink-soft); border-radius: 7px; white-space: nowrap; }
+.sub-due-btn.set { background: var(--accent-soft); color: var(--accent); }
+.sub.overdue .sub-due-btn.set { background: rgba(231,76,60,.14); color: var(--overdue); }
+.sub-due-badge { font-size: 12px; font-weight: 600; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 3px; }
+.sub-due-badge.overdue { color: var(--overdue); }
+
 /* Inline-Unteraufgaben in der Listenansicht */
 .task-subs { list-style: none; margin-top: 8px; padding-left: 2px; display: flex; flex-direction: column; gap: 2px; }
 .sub-inline { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
