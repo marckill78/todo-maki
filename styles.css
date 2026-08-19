@@ -278,6 +278,8 @@ input, select, textarea { font-family: inherit; font-size: 15px; color: var(--in
 .cal-dots { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
 .cal-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--chip); }
 .cal-dot.od { box-shadow: 0 0 0 2px rgba(231,76,60,.3); }
+/* Unteraufgabe = hohler Punkt (unterscheidet sich von der Aufgabe) */
+.cal-dot.sub { width: 6px; height: 6px; background: transparent; border: 1.5px solid var(--chip); }
 .cal-more { font-size: 10px; color: var(--ink-soft); }
 #cal-day { margin-top: 22px; }
 

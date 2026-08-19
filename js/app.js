@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v39";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v40";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -300,11 +300,16 @@
     const mdGoals = Store.state.goals.filter(g => g.myDay && !g.achieved);
     const mdPlaces = Store.state.places.filter(p => p.myDay);
     const mdPurchases = Store.state.purchases.filter(p => p.myDay && p.status !== "bought");
-    // Einzelne Unteraufgaben für Mein Tag (Eltern NICHT schon in Mein Tag, sonst inline gezeigt)
+    // Einzelne Unteraufgaben für Mein Tag (Eltern NICHT schon in Mein Tag, sonst inline gezeigt).
+    // Aufnahme, wenn manuell (☀️) markiert ODER ein Datum ≤ heute (fällig/überfällig) gesetzt ist.
     const mdSubs = [];
+    const mdToday = Store.todayStr();
     Store.state.tasks.forEach(t => {
       if (Store.inMyDay(t)) return;
-      (t.subtasks || []).forEach(s => { if (s.myDay && !s.done) mdSubs.push({ t, s }); });
+      (t.subtasks || []).forEach(s => {
+        if (s.done) return;
+        if (s.myDay || (s.due && s.due <= mdToday)) mdSubs.push({ t, s });
+      });
     });
     const dateStr = new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
 
@@ -548,6 +553,13 @@
     return `${f(mon)} – ${f(sun)} ${sun.getFullYear()}`;
   }
 
+  // Offene Unteraufgaben mit Datum an einem bestimmten Tag
+  function subtasksOnDate(ds) {
+    const out = [];
+    Store.state.tasks.forEach(t => (t.subtasks || []).forEach(s => { if (s.due === ds && !s.done) out.push({ t, s }); }));
+    return out;
+  }
+
   function renderCalMonth() {
     const y = calRef.getFullYear(), m = calRef.getMonth();
     const startDow = dowOffset(new Date(y, m, 1).getDay());
@@ -558,10 +570,16 @@
     for (let d = 1; d <= daysInMonth; d++) {
       const ds = Store.toDateStr(new Date(y, m, d));
       const tasks = Store.tasksOnDate(ds);
-      const dots = tasks.slice(0, 4).map(t => `<span class="cal-dot ${Store.isOverdue(t) ? "od" : ""}" style="--chip:${chipFor(t).color}"></span>`).join("");
+      const subs = subtasksOnDate(ds);
+      // Aufgaben = volle Punkte, Unteraufgaben = hohle Punkte (kleiner)
+      const allDots = [
+        ...tasks.map(t => `<span class="cal-dot ${Store.isOverdue(t) ? "od" : ""}" style="--chip:${chipFor(t).color}"></span>`),
+        ...subs.map(({ t, s }) => `<span class="cal-dot sub ${(s.due < today) ? "od" : ""}" style="--chip:${chipFor(t).color}"></span>`)
+      ];
+      const dots = allDots.slice(0, 4).join("");
       cells += `<div class="cal-cell ${ds === today ? "today" : ""}" data-date="${ds}">
         <span class="cal-num">${d}</span>
-        <div class="cal-dots">${dots}${tasks.length > 4 ? `<span class="cal-more">+${tasks.length - 4}</span>` : ""}</div>
+        <div class="cal-dots">${dots}${allDots.length > 4 ? `<span class="cal-more">+${allDots.length - 4}</span>` : ""}</div>
       </div>`;
     }
     const dows = weekDowLabels().map(d => `<div class="cal-dow">${d}</div>`).join("");
@@ -592,17 +610,21 @@
   function renderCalDay() {
     const ds = Store.toDateStr(calRef);
     const tasks = Store.tasksOnDate(ds);
+    const subs = subtasksOnDate(ds);
     $("#cal-area").innerHTML = `<div class="list-block">
-      ${tasks.length ? `<ul class="task-list">${tasks.map(taskRow).join("")}</ul>`
+      ${(tasks.length || subs.length) ? `<ul class="task-list">${tasks.map(taskRow).join("")}${subs.map(({ t, s }) => mdSubtaskRow(t, s)).join("")}</ul>`
         : `<p class="muted">Keine Aufgaben an diesem Tag.</p>`}</div>`;
   }
 
   function showCalDay(ds) {
     const tasks = Store.tasksOnDate(ds);
+    const subs = subtasksOnDate(ds);
     const el = $("#cal-day");
     el.innerHTML = `<div class="list-block">
-      <h3 class="block-title">${fmtDate(ds)} <span class="block-n">${tasks.length}</span></h3>
-      ${tasks.length ? `<ul class="task-list">${tasks.map(taskRow).join("")}</ul>` : `<p class="muted">Keine Aufgaben an diesem Tag.</p>`}
+      <h3 class="block-title">${fmtDate(ds)} <span class="block-n">${tasks.length + subs.length}</span></h3>
+      ${(tasks.length || subs.length)
+        ? `<ul class="task-list">${tasks.map(taskRow).join("")}${subs.map(({ t, s }) => mdSubtaskRow(t, s)).join("")}</ul>`
+        : `<p class="muted">Keine Aufgaben an diesem Tag.</p>`}
     </div>`;
     el.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
