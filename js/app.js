@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v37";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v39";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -2471,24 +2471,43 @@
 
   // Bulletproof-Update: prüft am Cache vorbei, ob eine neuere Version live ist.
   // Wenn ja → Service Worker + Caches entfernen und frisch laden. Unabhängig vom SW.
-  async function checkForUpdate() {
+  // Neueste veröffentlichte Version vom Server holen (am Cache vorbei)
+  async function fetchLatestVersion() {
     try {
       const r = await fetch(`version.json?t=${Date.now()}`, { cache: "no-store" });
-      if (!r.ok) return false;
+      if (!r.ok) return null;
       const { v } = await r.json();
-      if (v && v !== APP_VERSION && !sessionStorage.getItem("maki-updating")) {
-        sessionStorage.setItem("maki-updating", "1");
-        if ("serviceWorker" in navigator) {
-          const regs = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(regs.map(reg => reg.unregister()));
-        }
-        if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); }
-        location.reload();
-        return true;   // Seite lädt gleich neu — Rest überspringen
-      }
-      sessionStorage.removeItem("maki-updating");
-    } catch { /* offline o.ä. → mit vorhandener Version weitermachen */ }
-    return false;
+      return v || null;
+    } catch { return null; }   // offline o.ä.
+  }
+  // SW + Caches leeren und neu laden → holt garantiert die neueste Version
+  async function performUpdate() {
+    sessionStorage.setItem("maki-updating", "1");
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(reg => reg.unregister()));
+    }
+    if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); }
+    location.reload();
+  }
+  // Beim Kaltstart: veraltet → still auf die neueste Version aktualisieren.
+  // Loop-sicher: der „maki-updating"-Merker wird erst freigegeben, wenn die
+  // Version WIRKLICH passt. Bleibt sie trotz Update anders (stale Server/offline),
+  // wird NICHT erneut hart neu geladen — dann greift der Hinweis-Balken.
+  async function checkForUpdate() {
+    const v = await fetchLatestVersion();
+    if (!v) return false;                                  // offline → aktuelle Version behalten
+    if (v === APP_VERSION) { sessionStorage.removeItem("maki-updating"); return false; }
+    if (sessionStorage.getItem("maki-updating")) return false;   // schon versucht → kein Loop
+    await performUpdate();
+    return true;   // Seite lädt gleich neu — Rest überspringen
+  }
+  // Zur Laufzeit prüfen (App bleibt offen, neue Version wird veröffentlicht):
+  // dezenten Hinweis-Balken zeigen statt hart neu zu laden.
+  async function checkForNewVersion() {
+    const v = await fetchLatestVersion();
+    const bar = $("#update-bar"); if (!bar) return;
+    bar.hidden = !(v && v !== APP_VERSION);
   }
 
   /* ============ START ============ */
@@ -2523,6 +2542,13 @@
       $("#auth-gate-login").onclick = () => { $("#auth-gate-login").textContent = "Öffne Google…"; Sync.login(); };
     }
     updateAuthGate();
+
+    // „Update verfügbar"-Hinweis: Button + regelmäßige/fokus-basierte Prüfung
+    const upBtn = $("#update-now");
+    if (upBtn) upBtn.onclick = () => { upBtn.textContent = "Aktualisiere…"; performUpdate(); };
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkForNewVersion(); });
+    setInterval(checkForNewVersion, 15 * 60 * 1000);   // alle 15 Min
+    checkForNewVersion();
   }
   // Pflicht-Anmeldung: Gate zeigen, sobald klar ist, dass niemand eingeloggt ist (nur Live-Domain)
   function updateAuthGate() {

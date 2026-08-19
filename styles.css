@@ -453,6 +453,20 @@ input, select, textarea { font-family: inherit; font-size: 15px; color: var(--in
 }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px); } }
 
+/* „Update verfügbar"-Hinweis */
+.update-bar {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 28px);
+  background: var(--accent); color: #fff; padding: 10px 12px 10px 18px;
+  border-radius: 14px; font-weight: 600; z-index: 90; box-shadow: var(--shadow-lg);
+  animation: toast-in .25s ease;
+}
+.update-bar button {
+  background: rgba(255,255,255,.22); color: #fff; font-weight: 700;
+  padding: 7px 14px; border-radius: 9px; white-space: nowrap;
+}
+.update-bar button:hover { background: rgba(255,255,255,.32); }
+
 /* ============ PRIORITÄTS-BADGE ============ */
 .prio-badge {
   flex-shrink: 0; height: 19px; padding: 0 7px; border-radius: 6px;
