@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v36";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v37";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -1729,8 +1729,8 @@
       <button class="check sm" data-sub-toggle><span class="check-box">${s.done ? "✓" : ""}</span></button>
       <span class="sub-title" data-sub-edit contenteditable="true" spellcheck="false">${esc(s.title)}</span>
       ${showMyDay ? `<span class="sub-due">
-        <button class="icon-btn sm sub-due-btn ${s.due ? "set" : ""}" data-sub-date title="Datum setzen">${s.due ? esc(fmtDueShort(s.due)) : "📅"}</button>
-        <input type="date" class="sub-due-inp" data-sub-due value="${s.due || ""}" tabindex="-1">
+        <button class="icon-btn sm sub-due-btn ${s.due ? "set" : ""}" data-sub-date title="Datum setzen" tabindex="-1">${s.due ? esc(fmtDueShort(s.due)) : "📅"}</button>
+        <input type="date" class="sub-due-inp" data-sub-due value="${s.due || ""}" aria-label="Datum der Unteraufgabe">
       </span>` : ""}
       ${showMyDay ? `<button class="icon-btn sm sub-md ${s.myDay ? "on" : ""}" data-sub-md title="Zu „Mein Tag“">☀️</button>` : ""}
       ${showMyDay ? `<button class="icon-btn sm" data-sub-convert title="In eigene Aufgabe umwandeln">↗</button>` : ""}
