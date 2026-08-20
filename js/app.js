@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v40";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v41";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -2163,11 +2163,11 @@
         <h4>Erinnerungen</h4>
         <label class="toggle-field">
           <input type="checkbox" data-s="reminders" ${remindersOn()?"checked":""}>
-          <span>An heute fällige Aufgaben erinnern</span>
+          <span>An heute fällige Aufgaben &amp; Unteraufgaben erinnern</span>
         </label>
         <label class="field"><span>Uhrzeit (optional)</span>
           <input type="time" data-s="reminder-time" value="${reminderTime()}" style="max-width:140px"></label>
-        <p class="muted small">Ohne Uhrzeit: beim ersten Öffnen pro Tag. Mit Uhrzeit: ab dann (solange die App offen ist). Auf dem iPhone erst nach Installation als App.</p>
+        <p class="muted small">Ohne Uhrzeit: beim ersten Öffnen pro Tag. Mit Uhrzeit: ab dann (solange die App offen ist). Auf dem iPhone erst nach Installation als App. Enthält jetzt auch fällige Unteraufgaben.</p>
       </div>
       <div class="settings-block">
         <h4>Backup</h4>
@@ -2368,15 +2368,29 @@
     }
     fireDailyNotification();
   }
+  // Alle offenen, datierten Erinnerungs-Posten für heute: Aufgaben UND Unteraufgaben
+  // (fällig heute oder überfällig)
+  function dueRemindItems() {
+    const today = Store.todayStr();
+    const items = [];
+    Store.state.tasks.forEach(t => {
+      if (t.archived) return;
+      if (!t.done && t.due && t.due <= today) items.push({ title: t.title, overdue: t.due < today });
+      (t.subtasks || []).forEach(s => {
+        if (!s.done && s.due && s.due <= today) items.push({ title: s.title, overdue: s.due < today });
+      });
+    });
+    return items;
+  }
   function fireDailyNotification() {
     if (!remindersOn() || Notification.permission !== "granted") return;
     if (localStorage.getItem("maki-last-notified") === Store.todayStr()) return;
-    const due = Store.myDayTasks().filter(t => !t.done && (Store.isDueToday(t) || Store.isOverdue(t)));
+    const due = dueRemindItems();
     if (!due.length) return;
-    const overdue = due.filter(Store.isOverdue).length;
-    const body = due.slice(0, 4).map(t => "• " + t.title).join("\n") + (due.length > 4 ? `\n…und ${due.length - 4} mehr` : "");
+    const overdue = due.filter(i => i.overdue).length;
+    const body = due.slice(0, 4).map(i => "• " + i.title).join("\n") + (due.length > 4 ? `\n…und ${due.length - 4} mehr` : "");
     try {
-      new Notification(`☀️ ${due.length} Aufgabe${due.length > 1 ? "n" : ""} heute${overdue ? ` (${overdue} überfällig)` : ""}`,
+      new Notification(`☀️ ${due.length} heute fällig${overdue ? ` (${overdue} überfällig)` : ""}`,
         { body, icon: "assets/icon-192.png", tag: "maki-daily" });
       localStorage.setItem("maki-last-notified", Store.todayStr());
     } catch { /* z.B. iOS ohne installierte PWA */ }
