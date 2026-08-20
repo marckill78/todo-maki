@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v41";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v42";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -1833,14 +1833,19 @@
       b.classList.add("sel");
     });
 
-    // Unteraufgaben
+    // Unteraufgaben.
+    // WICHTIG: Immer den FRISCHEN Task aus Store.state nehmen (nie die beim Öffnen
+    // eingefrorene Kopie `t`) — sonst überschreibt ein veralteter Stand nach einem
+    // Sync-Reload gerade gesetzte Werte (z.B. Datum einer anderen Unteraufgabe).
     const subsEl = panel.querySelector("[data-subs]");
     const newSub = panel.querySelector("[data-sub-new]");
+    const freshTask = () => Store.state.tasks.find(x => x.id === t.id) || t;
     const addSub = async () => {
       const v = newSub.value.trim(); if (!v) return;
-      t.subtasks = t.subtasks || [];
-      t.subtasks.push({ id: Store.uid(), title: v, done: false });
-      await Store.updateTask(t.id, { subtasks: t.subtasks });
+      const cur = freshTask();
+      cur.subtasks = cur.subtasks || [];
+      cur.subtasks.push({ id: Store.uid(), title: v, done: false });
+      await Store.updateTask(t.id, { subtasks: cur.subtasks });
       newSub.value = ""; refreshSubs(t); render();
     };
     panel.querySelector('[data-p="add-sub"]').onclick = addSub;
@@ -1848,18 +1853,19 @@
     subsEl.onclick = async (e) => {
       const li = e.target.closest("[data-sub]"); if (!li) return;
       const sid = li.dataset.sub;
+      const cur = freshTask();
       if (e.target.closest("[data-sub-toggle]")) {
-        const s = t.subtasks.find(s => s.id === sid);
+        const s = (cur.subtasks || []).find(s => s.id === sid); if (!s) return;
         await Store.toggleSubtask(t.id, sid, !s.done); refreshSubs(t); render();
       }
       if (e.target.closest("[data-sub-del]")) {
-        t.subtasks = t.subtasks.filter(s => s.id !== sid);
-        await Store.updateTask(t.id, { subtasks: t.subtasks }); refreshSubs(t); render();
+        cur.subtasks = (cur.subtasks || []).filter(s => s.id !== sid);
+        await Store.updateTask(t.id, { subtasks: cur.subtasks }); refreshSubs(t); render();
       }
       if (e.target.closest("[data-sub-md]")) {
-        const s = t.subtasks.find(s => s.id === sid);
+        const s = (cur.subtasks || []).find(s => s.id === sid); if (!s) return;
         s.myDay = !s.myDay;
-        await Store.updateTask(t.id, { subtasks: t.subtasks }); refreshSubs(t); render();
+        await Store.updateTask(t.id, { subtasks: cur.subtasks }); refreshSubs(t); render();
       }
       if (e.target.closest("[data-sub-date]")) {
         // nativen Datums-Dialog des versteckten Feldes öffnen
@@ -1867,10 +1873,10 @@
         if (inp) { if (inp.showPicker) { try { inp.showPicker(); } catch { inp.focus(); } } else inp.focus(); }
       }
       if (e.target.closest("[data-sub-convert]")) {
-        const s = t.subtasks.find(s => s.id === sid); if (!s) return;
-        await Store.addTask({ title: s.title, areaId: t.areaId, myDay: !!s.myDay, due: s.due || null });
-        t.subtasks = t.subtasks.filter(x => x.id !== sid);
-        await Store.updateTask(t.id, { subtasks: t.subtasks });
+        const s = (cur.subtasks || []).find(s => s.id === sid); if (!s) return;
+        await Store.addTask({ title: s.title, areaId: cur.areaId, myDay: !!s.myDay, due: s.due || null });
+        cur.subtasks = (cur.subtasks || []).filter(x => x.id !== sid);
+        await Store.updateTask(t.id, { subtasks: cur.subtasks });
         refreshSubs(t); render(); toast("In eigene Aufgabe umgewandelt");
       }
     };
@@ -1885,8 +1891,9 @@
     });
     // Unteraufgaben per Drag sortieren
     makeSortable(subsEl, ".sub-drag", "[data-sub]", "sub", async (ids) => {
-      t.subtasks = ids.map(id => (t.subtasks || []).find(s => s.id === id)).filter(Boolean);
-      await Store.updateTask(t.id, { subtasks: t.subtasks }); render();
+      const cur = freshTask();
+      cur.subtasks = ids.map(id => (cur.subtasks || []).find(s => s.id === id)).filter(Boolean);
+      await Store.updateTask(t.id, { subtasks: cur.subtasks }); render();
     });
     // Unteraufgaben-Text bearbeiten
     bindSubEditing(subsEl, async (sid, title) => {
