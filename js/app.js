@@ -13,7 +13,7 @@
   const modal     = $("#modal");
   const modalOv   = $("#modal-overlay");
 
-  const APP_VERSION = "v42";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
+  const APP_VERSION = "v43";   // sichtbar in den Einstellungen — bei jedem Deploy mitziehen
   let view = { name: "myday", areaId: null };
   let sortMode = localStorage.getItem("maki-sort") || "manual"; // manual | priority | due
 
@@ -631,6 +631,81 @@
 
   function emptyState(title, sub) {
     return `<div class="empty"><div class="empty-emoji">🗒️</div><h3>${esc(title)}</h3><p>${esc(sub)}</p></div>`;
+  }
+
+  /* ---------- Timeline (Gantt) ---------- */
+  function viewTimeline() {
+    const dayMs = 864e5, dayW = 26, ptW = 14;
+    const toD = s => new Date(s + "T00:00:00");
+    const today = Store.todayStr();
+    // Aufgaben mit datierten Unteraufgaben (oder eigenem Datum) sammeln
+    const groups = [];
+    Store.state.tasks.forEach(t => {
+      if (t.archived) return;
+      const subs = (t.subtasks || []).filter(s => s.start || s.due)
+        .sort((a, b) => (a.start || a.due).localeCompare(b.start || b.due));
+      const dates = [];
+      if (t.due) dates.push(t.due);
+      subs.forEach(s => { if (s.start) dates.push(s.start); if (s.due) dates.push(s.due); });
+      if (!dates.length) return;
+      dates.sort();
+      groups.push({ t, subs, gmin: dates[0], gmax: dates[dates.length - 1] });
+    });
+    let html = renderHeaderTitle("📈 Timeline", "Aufgaben & Unteraufgaben mit Datum als Zeitbalken");
+    if (!groups.length) {
+      content.innerHTML = html + emptyState("Noch keine Termine",
+        "Setze bei Unteraufgaben ein Start-/Enddatum (📅 im Aufgaben-Panel) — sie erscheinen hier als Balken.");
+      return;
+    }
+    let rmin = groups[0].gmin, rmax = groups[0].gmax;
+    groups.forEach(g => { if (g.gmin < rmin) rmin = g.gmin; if (g.gmax > rmax) rmax = g.gmax; });
+    const start = Store.addToDate(rmin, { type: "daily", interval: -2 });
+    const end = Store.addToDate(rmax, { type: "daily", interval: 2 });
+    const days = Math.round((toD(end) - toD(start)) / dayMs) + 1;
+    const idx = ds => Math.round((toD(ds) - toD(start)) / dayMs);
+    const trackW = days * dayW;
+    const todayLine = (today >= start && today <= end)
+      ? `<div class="g-today-line" style="left:${idx(today) * dayW}px"></div>` : "";
+
+    // Achse (Tageszahlen; Monatswechsel bekommt eine Trennlinie)
+    let axis = "";
+    for (let i = 0; i < days; i++) {
+      const d = new Date(toD(start).getTime() + i * dayMs);
+      const ds = Store.toDateStr(d), dow = d.getDay();
+      axis += `<div class="g-day ${ds === today ? "today" : ""} ${(dow === 0 || dow === 6) ? "we" : ""} ${d.getDate() === 1 ? "mstart" : ""}" style="left:${i * dayW}px">
+        ${d.getDate() === 1 || i === 0 ? `<span class="g-mon">${d.toLocaleDateString("de-DE", { month: "short" })}</span>` : ""}
+        <span class="g-dn">${d.getDate()}</span></div>`;
+    }
+    const row = (label, cls, bar) => `<div class="g-row"><div class="g-label ${cls}">${label}</div>
+      <div class="g-track" style="width:${trackW}px">${bar}${todayLine}</div></div>`;
+
+    let rows = "";
+    groups.forEach(({ t, subs, gmin, gmax }) => {
+      const color = chipFor(t).color;
+      const sL = idx(gmin) * dayW, sW = (idx(gmax) - idx(gmin) + 1) * dayW;
+      const summary = `<div class="g-bar summary" style="left:${sL}px;width:${sW}px;--chip:${color}" data-id="${t.id}"></div>`;
+      rows += row(`<span class="g-emoji">${chipFor(t).emoji}</span><span class="g-name">${esc(t.title)}</span>`, "task", summary);
+      subs.forEach(s => {
+        let bar;
+        if (s.start && s.due) {
+          const l = idx(s.start) * dayW, w = (idx(s.due) - idx(s.start) + 1) * dayW;
+          bar = `<div class="g-bar ${s.done ? "done" : ""}" style="left:${l}px;width:${w}px;--chip:${color}" data-id="${t.id}" title="${esc(s.title)} · ${fmtDueShort(s.start)}–${fmtDueShort(s.due)}"><span>${esc(s.title)}</span></div>`;
+        } else {
+          const d = s.due || s.start, l = idx(d) * dayW + (dayW - ptW) / 2;
+          bar = `<div class="g-point ${s.done ? "done" : ""}" style="left:${l}px;--chip:${color}" data-id="${t.id}" title="${esc(s.title)} · ${fmtDueShort(d)}"></div>`;
+        }
+        rows += row(`<span class="g-name sub">${esc(s.title)}</span>`, "sub", bar);
+      });
+    });
+    html += `<div class="gantt-wrap"><div class="gantt">
+      <div class="g-row g-head"><div class="g-label"></div><div class="g-track" style="width:${trackW}px">${axis}${todayLine}</div></div>
+      ${rows}
+    </div></div>`;
+    content.innerHTML = html;
+    $$("#content .gantt [data-id]").forEach(el => el.onclick = () => openPanel(el.dataset.id));
+    // horizontal zu „heute" scrollen
+    const wrap = $("#content .gantt-wrap");
+    if (wrap && today >= start && today <= end) wrap.scrollLeft = Math.max(0, idx(today) * dayW - 120);
   }
 
   /* ---------- Statistik ---------- */
@@ -1598,7 +1673,7 @@
     const q = $("#search").value.trim();
     if (q) return renderSearch(q);
     ({ myday: viewMyDay, all: viewAll, area: viewArea,
-       calendar: viewCalendar, archive: viewArchive,
+       calendar: viewCalendar, timeline: viewTimeline, archive: viewArchive,
        goals: viewGoals, places: viewPlaces, budget: viewBudget, stats: viewStats,
        purchases: viewPurchases, trash: viewTrash }[view.name] || viewMyDay)();
   }
@@ -1607,7 +1682,7 @@
     const b = $("#quick-add-btn"); if (!b) return;
     const labels = { places: "＋ Neuer Ort", goals: "＋ Neues Ziel", purchases: "＋ Anschaffung" };
     b.textContent = labels[view.name] || "＋ Neue Aufgabe";
-    b.style.display = ["stats", "archive", "calendar", "budget"].includes(view.name) ? "none" : "";
+    b.style.display = ["stats", "archive", "calendar", "timeline", "budget"].includes(view.name) ? "none" : "";
   }
   function quickAddDispatch() {
     if (view.name === "places") return openPlacePanel(null);
@@ -1750,13 +1825,44 @@
       <span class="sub-drag" title="Ziehen zum Sortieren">⠿</span>
       <button class="check sm" data-sub-toggle><span class="check-box">${s.done ? "✓" : ""}</span></button>
       <span class="sub-title" data-sub-edit contenteditable="true" spellcheck="false">${esc(s.title)}</span>
-      ${showMyDay ? `<span class="sub-due">
-        <button class="icon-btn sm sub-due-btn ${s.due ? "set" : ""}" data-sub-date title="Datum setzen" tabindex="-1">${s.due ? esc(fmtDueShort(s.due)) : "📅"}</button>
-        <input type="date" class="sub-due-inp" data-sub-due value="${s.due || ""}" aria-label="Datum der Unteraufgabe">
-      </span>` : ""}
+      ${showMyDay ? `<button class="icon-btn sm sub-due-btn ${(s.start || s.due) ? "set" : ""}" data-sub-date title="Zeitraum (Start/Ende)">${subDateLabel(s)}</button>` : ""}
       ${showMyDay ? `<button class="icon-btn sm sub-md ${s.myDay ? "on" : ""}" data-sub-md title="Zu „Mein Tag“">☀️</button>` : ""}
       ${showMyDay ? `<button class="icon-btn sm" data-sub-convert title="In eigene Aufgabe umwandeln">↗</button>` : ""}
       <button class="icon-btn sm" data-sub-del>✕</button></li>`;
+  }
+  // Kompaktes Label für den Zeitraum-Chip einer Unteraufgabe
+  function subDateLabel(s) {
+    if (!s.start && !s.due) return "📅";
+    if (s.start && s.due) return fmtDueShort(s.start) + "–" + fmtDueShort(s.due);
+    return fmtDueShort(s.due || s.start);
+  }
+  // Kleiner Editor für Start/Ende einer Unteraufgabe (öffnet native Datumsdialoge)
+  function openSubDateEditor(taskId, subId) {
+    const task = Store.state.tasks.find(x => x.id === taskId); if (!task) return;
+    const s = (task.subtasks || []).find(x => x.id === subId); if (!s) return;
+    const back = document.createElement("div");
+    back.className = "sub-date-pop-back";
+    back.innerHTML = `<div class="sub-date-pop" role="dialog">
+      <h4>🗓 Zeitraum</h4>
+      <label class="field"><span>Start (optional)</span><input type="date" data-sd-start value="${s.start || ""}"></label>
+      <label class="field"><span>Ende / Termin</span><input type="date" data-sd-end value="${s.due || ""}"></label>
+      <div class="sub-date-actions">
+        <button class="link-btn danger" data-sd-clear>Entfernen</button>
+        <button class="btn-primary" data-sd-done>Fertig</button>
+      </div></div>`;
+    document.body.appendChild(back);
+    const save = async (patch) => {
+      const cur = Store.state.tasks.find(x => x.id === taskId); if (!cur) return;
+      const sub = (cur.subtasks || []).find(x => x.id === subId); if (!sub) return;
+      Object.assign(sub, patch);
+      await Store.updateTask(taskId, { subtasks: cur.subtasks });
+    };
+    const close = () => { back.remove(); refreshSubs(task); render(); };
+    back.querySelector("[data-sd-start]").onchange = (e) => save({ start: e.target.value || null });
+    back.querySelector("[data-sd-end]").onchange = (e) => save({ due: e.target.value || null });
+    back.querySelector("[data-sd-clear]").onclick = async () => { await save({ start: null, due: null }); close(); };
+    back.querySelector("[data-sd-done]").onclick = close;
+    back.onclick = (e) => { if (e.target === back) close(); };
   }
   // Bearbeitete Unteraufgabe speichern (Enter beendet, Klick woandershin auch)
   function bindSubEditing(listEl, onSave) {
@@ -1868,9 +1974,7 @@
         await Store.updateTask(t.id, { subtasks: cur.subtasks }); refreshSubs(t); render();
       }
       if (e.target.closest("[data-sub-date]")) {
-        // nativen Datums-Dialog des versteckten Feldes öffnen
-        const inp = li.querySelector("[data-sub-due]");
-        if (inp) { if (inp.showPicker) { try { inp.showPicker(); } catch { inp.focus(); } } else inp.focus(); }
+        openSubDateEditor(t.id, sid);   // Zeitraum-Editor (Start/Ende)
       }
       if (e.target.closest("[data-sub-convert]")) {
         const s = (cur.subtasks || []).find(s => s.id === sid); if (!s) return;
@@ -1880,15 +1984,6 @@
         refreshSubs(t); render(); toast("In eigene Aufgabe umgewandelt");
       }
     };
-    // Datum einer Unteraufgabe gesetzt/geändert (verstecktes date-Feld)
-    subsEl.addEventListener("change", async (e) => {
-      const inp = e.target.closest("[data-sub-due]"); if (!inp) return;
-      const li = inp.closest("[data-sub]"); if (!li) return;
-      const cur = Store.state.tasks.find(x => x.id === t.id); if (!cur) return;
-      const s = (cur.subtasks || []).find(s => s.id === li.dataset.sub); if (!s) return;
-      s.due = inp.value || null;
-      await Store.updateTask(t.id, { subtasks: cur.subtasks }); refreshSubs(t); render();
-    });
     // Unteraufgaben per Drag sortieren
     makeSortable(subsEl, ".sub-drag", "[data-sub]", "sub", async (ids) => {
       const cur = freshTask();

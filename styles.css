@@ -369,6 +369,42 @@ input, select, textarea { font-family: inherit; font-size: 15px; color: var(--in
 .sub.overdue .sub-due-btn.set { background: rgba(231,76,60,.14); color: var(--overdue); }
 .sub-due-badge { font-size: 12px; font-weight: 600; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 3px; }
 .sub-due-badge.overdue { color: var(--overdue); }
+/* Zeitraum-Editor (Start/Ende einer Unteraufgabe) */
+.sub-date-pop-back { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100; display: grid; place-items: center; padding: 16px; }
+.sub-date-pop { background: var(--surface); color: var(--ink); border-radius: 16px; padding: 18px; width: min(340px, 92vw); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 12px; }
+.sub-date-pop h4 { font-size: 16px; font-weight: 700; }
+.sub-date-pop .field { display: flex; flex-direction: column; gap: 5px; }
+.sub-date-pop .field span { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); }
+.sub-date-pop .field input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.sub-date-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+
+/* ============ TIMELINE (Gantt) ============ */
+.gantt-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.gantt { min-width: max-content; }
+.g-row { display: flex; align-items: stretch; border-top: 1px solid var(--line); }
+.g-row:first-child { border-top: none; }
+.g-head { background: var(--surface-2); }
+.g-label { width: 150px; min-width: 150px; padding: 0 10px; font-size: 13px; position: sticky; left: 0; z-index: 2; background: var(--surface); border-right: 1px solid var(--line); display: flex; align-items: center; gap: 6px; }
+.g-head .g-label { background: var(--surface-2); }
+.g-label.task { font-weight: 700; }
+.g-emoji { flex-shrink: 0; }
+.g-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-name.sub { color: var(--ink-soft); font-size: 12.5px; padding-left: 12px; }
+.g-track { position: relative; height: 32px; flex: 0 0 auto; }
+.g-day { position: absolute; top: 0; width: 26px; height: 32px; text-align: center; box-sizing: border-box; }
+.g-day .g-dn { font-size: 10px; color: var(--ink-soft); line-height: 32px; }
+.g-day.we .g-dn { color: #b9bccb; }
+.g-day.today .g-dn { color: var(--accent); font-weight: 800; }
+.g-day.mstart { border-left: 1px solid var(--line); }
+.g-mon { position: absolute; left: 2px; top: 1px; font-size: 9px; font-weight: 800; color: var(--accent); text-transform: uppercase; }
+.g-bar { position: absolute; top: 7px; height: 18px; border-radius: 6px; background: var(--chip); color: #fff; font-size: 11px; overflow: hidden; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.18); display: flex; align-items: center; }
+.g-bar span { padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-bar.summary { top: 12px; height: 8px; opacity: .4; border-radius: 4px; box-shadow: none; }
+.g-bar.done { opacity: .5; }
+.g-bar.done span { text-decoration: line-through; }
+.g-point { position: absolute; top: 9px; width: 14px; height: 14px; background: var(--chip); transform: rotate(45deg); border-radius: 3px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+.g-point.done { opacity: .5; }
+.g-today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); opacity: .55; z-index: 1; pointer-events: none; }
 
 /* Inline-Unteraufgaben in der Listenansicht */
 .task-subs { list-style: none; margin-top: 8px; padding-left: 2px; display: flex; flex-direction: column; gap: 2px; }
